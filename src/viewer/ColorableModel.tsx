@@ -16,11 +16,13 @@ export function ColorableModel() {
 
   const currentPlate = parseResult?.plates.find((p) => p.id === currentPlateId);
 
-  // Build scene when plate changes (NOT when colors change)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Rebuild the scene only when the plate changes. Filament colors are applied
+  // reactively by the useEffect below, so we intentionally exclude `filaments`
+  // from the dependency list to avoid rebuilding geometry on every color edit.
   const sceneGroup = useMemo(() => {
     if (!currentPlate) return null;
     return buildSceneFromPlate(currentPlate.meshChunks, filaments);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPlate]);
 
   // Update material colors reactively (no geometry rebuild)

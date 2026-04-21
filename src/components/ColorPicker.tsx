@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { HexColorPicker } from 'react-colorful';
 import { useAppStore } from '../store/useAppStore';
 
@@ -8,11 +8,14 @@ export function ColorPickerPanel() {
   const setFilamentColor = useAppStore((s) => s.setFilamentColor);
 
   const filament = filaments.find((f) => f.index === selectedFilamentIndex);
-  const [hexInput, setHexInput] = useState('');
+  const [hexInput, setHexInput] = useState(filament?.currentColor ?? '');
+  const [syncedColor, setSyncedColor] = useState(filament?.currentColor ?? '');
 
-  useEffect(() => {
-    if (filament) setHexInput(filament.currentColor);
-  }, [filament]);
+  // Re-sync the text input when the selected filament or its color changes.
+  if (filament && filament.currentColor !== syncedColor) {
+    setSyncedColor(filament.currentColor);
+    setHexInput(filament.currentColor);
+  }
 
   if (!filament) {
     return (
