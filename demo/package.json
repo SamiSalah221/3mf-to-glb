@@ -1,0 +1,21 @@
+{
+  "name": "3mf-to-glb-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion project that renders the hero.gif shown in the main README.",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render Hero ../docs/hero.gif --codec=gif --scale=1",
+    "render-small": "remotion render Hero ../docs/hero.gif --codec=gif --scale=0.5"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.402",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.402"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.9.0"
+  }
+}
