@@ -1,6 +1,9 @@
 import JSZip from 'jszip';
 import type { ParseResult, Plate, MeshChunk, FilamentSlot } from '../types';
 
+const DEBUG = false;
+const debugLog = (...args: unknown[]) => { if (DEBUG) console.log(...args); };
+
 // ---- Internal types ----
 
 interface VertexData { x: number; y: number; z: number }
@@ -173,7 +176,7 @@ export async function parse3MF(buffer: ArrayBuffer): Promise<ParseResult> {
       const gcodeDoc = domParser.parseFromString(gcodeXml, 'application/xml');
       plateLayerConfigs = parseLayerColorChanges(gcodeDoc);
       if (plateLayerConfigs.length > 0) {
-        console.log(`[3MF Parser] Layer color changes found for ${plateLayerConfigs.length} plate(s)`);
+        debugLog(`[3MF Parser] Layer color changes found for ${plateLayerConfigs.length} plate(s)`);
       }
     }
   } catch { /* no layer color changes */ }
@@ -287,7 +290,7 @@ export async function parse3MF(buffer: ArrayBuffer): Promise<ParseResult> {
       if (layerConfig && layerConfig.changes.length > 0) {
         const defaultExtruder = objectMeta.get(String(plateInfo.objectIds[0]))?.extruder ?? 1;
         meshChunks = applyLayerColorChanges(meshChunks, layerConfig.changes, defaultExtruder);
-        console.log(`[3MF Parser] Plate ${plateInfo.id}: split by ${layerConfig.changes.length} layer color changes → ${meshChunks.length} chunks`);
+        debugLog(`[3MF Parser] Plate ${plateInfo.id}: split by ${layerConfig.changes.length} layer color changes → ${meshChunks.length} chunks`);
       }
 
       let thumbnailUrl: string | null = null;
@@ -328,10 +331,10 @@ export async function parse3MF(buffer: ArrayBuffer): Promise<ParseResult> {
   if (nonEmptyPlates.length === 0) throw new Error('No geometry found in 3MF file');
 
   // Debug: log plate/chunk/filament mapping
-  console.log('[3MF Parser] Filaments:', filaments.map(f => `${f.index}=${f.originalColor}`).join(', '));
+  debugLog('[3MF Parser] Filaments:', filaments.map(f => `${f.index}=${f.originalColor}`).join(', '));
   for (const plate of nonEmptyPlates) {
     const chunkSummary = plate.meshChunks.map(c => `${c.name}(fil=${c.filamentIndex},faces=${c.faceCount})`).join(', ');
-    console.log(`[3MF Parser] Plate ${plate.id} "${plate.name}": filaments=[${plate.filamentIndicesUsed}] chunks=[${chunkSummary}]`);
+    debugLog(`[3MF Parser] Plate ${plate.id} "${plate.name}": filaments=[${plate.filamentIndicesUsed}] chunks=[${chunkSummary}]`);
   }
 
   return { plates: nonEmptyPlates, filaments };

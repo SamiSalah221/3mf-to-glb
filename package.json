@@ -1,7 +1,29 @@
 {
-  "name": "3mf-project",
-  "private": true,
-  "version": "0.0.0",
+  "name": "3mf-to-glb",
+  "version": "1.0.0",
+  "description": "Browser-based tool that parses BambuStudio multi-color 3MF files, lets you re-paint color zones in an interactive 3D viewer, and exports a production-ready GLB. 100% client-side.",
+  "author": "Sami Salah",
+  "license": "MIT",
+  "homepage": "https://samisalah221.github.io/3mf-to-glb/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SamiSalah221/3mf-to-glb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SamiSalah221/3mf-to-glb/issues"
+  },
+  "keywords": [
+    "3mf",
+    "glb",
+    "gltf",
+    "3d-printing",
+    "bambu",
+    "bambustudio",
+    "three.js",
+    "react",
+    "paint-color",
+    "multi-color"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,7 +38,6 @@
     "@react-three/postprocessing": "^3.0.4",
     "@tailwindcss/vite": "^4.2.1",
     "@types/three": "^0.183.1",
-    "adm-zip": "^0.5.16",
     "autoprefixer": "^10.4.27",
     "fast-xml-parser": "^5.5.3",
     "jszip": "^3.10.1",
