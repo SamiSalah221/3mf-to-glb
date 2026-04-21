@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="3MF Color Customizer">
+  <rect width="64" height="64" rx="12" fill="#0f172a"/>
+  <g transform="translate(32 34)">
+    <polygon points="0,-20 18,-10 0,0 -18,-10" fill="#34d399"/>
+    <polygon points="-18,-10 0,0 0,20 -18,10" fill="#f59e0b"/>
+    <polygon points="18,-10 0,0 0,20 18,10" fill="#ef4444"/>
+    <polyline points="0,-20 0,0" stroke="#0f172a" stroke-width="1.5" fill="none"/>
+    <polyline points="-18,-10 0,0 18,-10" stroke="#0f172a" stroke-width="1.5" fill="none"/>
+    <polyline points="0,0 0,20" stroke="#0f172a" stroke-width="1.5" fill="none"/>
+  </g>
+</svg>
