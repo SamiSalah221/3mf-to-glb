@@ -10,7 +10,7 @@ import {
 export const FPS = 30;
 export const WIDTH = 1280;
 export const HEIGHT = 720;
-export const DURATION_FRAMES = 240; // 8s
+export const DURATION_FRAMES = 300; // 10s
 
 const COLORS = {
   bg: "#0F172A",
@@ -391,9 +391,12 @@ export const Hero: React.FC = () => {
     colorsEnd: 140,
     pickerStart: 140,
     pickerSwapMid: 175,
-    pickerSwapEnd: 195,
-    glbStart: 195,
-    glbEnd: 240,
+    pickerSwapEnd: 200,
+    glbStart: 210,
+    glbArrowStart: 235,
+    glbArrowEnd: 265,
+    captionStart: 255,
+    glbEnd: 300,
   };
 
   // 1. File card drop-in
@@ -510,7 +513,7 @@ export const Hero: React.FC = () => {
   // Arrow → GLB
   const arrowProgress = interpolate(
     frame,
-    [SCENE.glbStart + 12, SCENE.glbStart + 32],
+    [SCENE.glbArrowStart, SCENE.glbArrowEnd],
     [0, 1],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
@@ -568,7 +571,7 @@ export const Hero: React.FC = () => {
             opacity: fileOpacity * fileExitOpacity,
           }}
         >
-          <FileCard label=".3MF" sublabel="ayat_al_kursi" color={COLORS.zone1} />
+          <FileCard label=".3MF" sublabel="watchful_owl" color={COLORS.zone1} />
         </div>
       </Sequence>
 
@@ -614,7 +617,7 @@ export const Hero: React.FC = () => {
       )}
 
       {/* RIGHT: Color picker panel */}
-      <Sequence from={SCENE.pickerStart} durationInFrames={SCENE.glbStart - SCENE.pickerStart + 30}>
+      <Sequence from={SCENE.pickerStart} durationInFrames={SCENE.glbEnd - SCENE.pickerStart}>
         <div
           style={{
             position: "absolute",
@@ -695,7 +698,7 @@ export const Hero: React.FC = () => {
           fontWeight: 500,
           opacity: interpolate(
             frame,
-            [SCENE.glbStart + 20, SCENE.glbStart + 40],
+            [SCENE.captionStart, SCENE.captionStart + 20],
             [0, 1],
             { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
           ),

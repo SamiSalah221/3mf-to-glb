@@ -8,7 +8,7 @@
 
 - [ ] `npm run lint` passes
 - [ ] `npm run build` passes
-- [ ] Loaded `samples/Allah_Ayatul_Kursi.3mf` locally and confirmed render + edit + GLB export still work
+- [ ] Loaded `samples/watchful-owl.3mf` locally and confirmed render + edit + GLB export still work
 - [ ] Loaded `samples/hijri-calendar.3mf` locally and confirmed render + edit + GLB export still work
 - [ ] Exported GLB opens correctly in a third-party viewer (e.g. gltf-viewer.donmccurdy.com)
 - [ ] Added a new test fixture under `samples/` if this PR fixes a file-specific bug
