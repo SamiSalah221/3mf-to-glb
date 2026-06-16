@@ -12,6 +12,7 @@ export function ColorableModel() {
   const filaments = useAppStore((s) => s.filaments);
   const selectedFilamentIndex = useAppStore((s) => s.selectedFilamentIndex);
   const selectFilament = useAppStore((s) => s.selectFilament);
+  const setThinAxis = useAppStore((s) => s.setThinAxis);
   const groupRef = useRef<THREE.Group>(null);
 
   const currentPlate = parseResult?.plates.find((p) => p.id === currentPlateId);
@@ -24,6 +25,12 @@ export function ColorableModel() {
     return buildSceneFromPlate(currentPlate.meshChunks, filaments);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPlate]);
+
+  // Publish the thin-axis hint so ViewerCanvas can face the camera at the
+  // printed face on each plate change (see glbBuilder.buildSceneFromPlate).
+  useEffect(() => {
+    if (sceneGroup) setThinAxis(sceneGroup.userData.thinAxis ?? null);
+  }, [sceneGroup, setThinAxis]);
 
   // Update material colors reactively (no geometry rebuild)
   useEffect(() => {

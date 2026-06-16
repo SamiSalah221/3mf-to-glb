@@ -18,6 +18,11 @@ interface AppStore {
   currentPlateId: number | null;
   selectedFilamentIndex: number | null; // which filament is being edited
 
+  // Geometry-derived camera hint: the thinnest world-space axis of the current
+  // plate's bounding box. The viewer positions the camera along this axis so
+  // the printed face points at the camera (matches Bambu's preview orientation).
+  thinAxis: 'x' | 'y' | 'z' | null;
+
   // Actions
   setFile: (f: File) => void;
   setLoading: (loading: boolean) => void;
@@ -26,6 +31,7 @@ interface AppStore {
   setCurrentPlate: (plateId: number) => void;
   selectFilament: (index: number | null) => void;
   setFilamentColor: (index: number, color: string) => void;
+  setThinAxis: (axis: 'x' | 'y' | 'z' | null) => void;
   resetColors: () => void;
   reset: () => void;
 }
@@ -39,6 +45,7 @@ export const useAppStore = create<AppStore>((set) => ({
   filaments: [],
   currentPlateId: null,
   selectedFilamentIndex: null,
+  thinAxis: null,
 
   setFile: (f) => set({ file: f, error: null }),
 
@@ -66,6 +73,8 @@ export const useAppStore = create<AppStore>((set) => ({
       ),
     })),
 
+  setThinAxis: (axis) => set({ thinAxis: axis }),
+
   resetColors: () =>
     set((state) => ({
       filaments: state.filaments.map((f) => ({ ...f, currentColor: f.originalColor })),
@@ -81,5 +90,6 @@ export const useAppStore = create<AppStore>((set) => ({
       filaments: [],
       currentPlateId: null,
       selectedFilamentIndex: null,
+      thinAxis: null,
     }),
 }));
