@@ -21,7 +21,11 @@ export function buildSceneFromPlate(
       color: new THREE.Color(r, g, b),
       metalness: 0,
       roughness: 0.8,
-      side: THREE.DoubleSide,
+      // FrontSide + back-face culling: 3MF meshes are prepared for 3D printing
+      // (watertight, CCW winding), so the interior should never be visible.
+      // DoubleSide caused painted-region back faces to bleed through at oblique
+      // camera angles — see docs/ARCHITECTURE.md for the diagnostic story.
+      side: THREE.FrontSide,
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -40,6 +44,14 @@ export function buildSceneFromPlate(
 
   group.position.sub(center.multiplyScalar(scale));
   group.scale.setScalar(scale);
+
+  // Stash the pre-normalized thinnest-axis hint for the viewer's camera
+  // placement. For flat 3D-printed parts this is the print-flat direction
+  // (typically Z), and viewing down it gives a face-on preview.
+  const thinAxis: 'x' | 'y' | 'z' =
+    size.x <= size.y && size.x <= size.z ? 'x' :
+    size.y <= size.z ? 'y' : 'z';
+  group.userData.thinAxis = thinAxis;
 
   return group;
 }

@@ -234,8 +234,13 @@ export async function parse3MF(buffer: ArrayBuffer): Promise<ParseResult> {
         const compTransform = compTStr ? parseTransform(compTStr) : null;
         const finalTransform = combineTransforms(buildTransform, compTransform);
 
-        // Resolve part extruder: check model_settings partExtruders by compObjId
-        const partExtruder = meta?.partExtruders.get(String(compObjId)) ?? objExtruder;
+        // Resolve part extruder: check model_settings partExtruders by compObjId.
+        // Bambu encodes "unassigned, inherit from object default" as extruder=0
+        // (e.g. Generic-Cube anchor parts on Image-to-Keychain templates).
+        // We must NOT pass 0 through — it produces filamentIndex=0 chunks that
+        // render gray and are skipped by the reactive recolor pass. See Turkey.3mf.
+        const rawPartExt = meta?.partExtruders.get(String(compObjId));
+        const partExtruder = rawPartExt && rawPartExt > 0 ? rawPartExt : objExtruder;
 
         const normalizedPath = compPath.startsWith('/') ? compPath.slice(1) : compPath;
         const subDoc = compPath ? modelDocs.get(normalizedPath) : rootDoc;
@@ -433,7 +438,14 @@ function decodePaintColor(hex: string): number {
 
 /**
  * Recursively decode paint_color tree and return the dominant extruder.
- * For subdivided triangles, returns the most common non-zero state.
+ *
+ * For subdivided triangles, returns the majority state INCLUDING inherit (0).
+ * Earlier versions filtered `s > 0` to "prefer painted over inherited", but
+ * that over-paints boundary triangles: a triangle with children [0,0,0,4]
+ * (75% inherit, 25% white) would get painted entirely white, creating a
+ * visible seam bleeding from white painted regions into unpainted neighbors.
+ * With the filter removed, inherit wins in that case, giving a cleaner edge.
+ * See docs/ARCHITECTURE.md for the kuwait.3mf diagnostic story.
  */
 function decodePaintTree(hex: string, reader: { pos: number }): number {
   if (reader.pos >= hex.length) return 0;
@@ -472,16 +484,17 @@ function decodePaintTree(hex: string, reader: { pos: number }): number {
     votes.set(childState, (votes.get(childState) || 0) + 1);
   }
 
-  // Return the most common non-zero state (prefer painted over inherited)
+  // Plurality vote including inherit (state 0). If inherit has the most
+  // children, the triangle inherits — avoids over-painting boundary tris.
   let bestState = 0;
-  let bestCount = 0;
+  let bestCount = -1;
   for (const [s, count] of votes) {
-    if (s > 0 && count > bestCount) {
+    if (count > bestCount) {
       bestState = s;
       bestCount = count;
     }
   }
-  return bestState || 0;
+  return bestState;
 }
 
 function extractMesh(doc: Document, objectId: number, ns: string): ParsedMeshData | null {

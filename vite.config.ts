@@ -8,6 +8,9 @@ const base = process.env.VITE_BASE ?? '/3mf-to-glb/'
 export default defineConfig({
   base,
   plugins: [react(), tailwindcss()],
+  server: {
+    port: 5175,
+  },
   worker: {
     format: 'es',
   },
