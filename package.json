@@ -1,7 +1,7 @@
 {
   "name": "3mf-to-glb",
   "version": "1.0.0",
-  "description": "Browser-based tool that parses BambuStudio multi-color 3MF files, lets you re-paint color zones in an interactive 3D viewer, and exports a production-ready GLB. 100% client-side.",
+  "description": "Open-source, browser-based color editor for multi-color 3MF files (Bambu / OrcaSlicer / U1 family). Re-paint color zones in an interactive 3D viewer and export a production-ready GLB. 100% client-side, MIT-licensed.",
   "author": "Sami Salah",
   "license": "MIT",
   "homepage": "https://samisalah221.github.io/3mf-to-glb/",
@@ -17,12 +17,15 @@
     "glb",
     "gltf",
     "3d-printing",
-    "bambu",
-    "bambustudio",
     "three.js",
     "react",
     "paint-color",
-    "multi-color"
+    "multi-color",
+    "orcaslicer",
+    "snapmaker-u1",
+    "open-source",
+    "khronos-gltf",
+    "color-customizer"
   ],
   "type": "module",
   "scripts": {
