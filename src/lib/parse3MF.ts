@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
-import type { ParseResult, Plate, MeshChunk, FilamentSlot } from '../types';
+import type { ParseResult, Plate, MeshChunk, FilamentSlot } from '../types/index.js';
+import { parseXml } from './parseXml.js';
 
 const DEBUG = false;
 const debugLog = (...args: unknown[]) => { if (DEBUG) console.log(...args); };
@@ -61,16 +62,15 @@ interface Vec3 { x: number; y: number; z: number }
 
 // ---- Main entry point ----
 
-export async function parse3MF(buffer: ArrayBuffer): Promise<ParseResult> {
+export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseResult> {
   const zip = await JSZip.loadAsync(buffer);
-  const domParser = new DOMParser();
 
   // 1. Load all .model XML documents
   const modelDocs = new Map<string, Document>();
   for (const [path, file] of Object.entries(zip.files)) {
     if (path.toLowerCase().endsWith('.model')) {
       const xml = await file.async('text');
-      const doc = domParser.parseFromString(xml, 'application/xml');
+      const doc = parseXml(xml);
       const norm = path.startsWith('/') ? path.slice(1) : path;
       modelDocs.set(norm, doc);
       modelDocs.set('/' + norm, doc);
@@ -100,7 +100,7 @@ export async function parse3MF(buffer: ArrayBuffer): Promise<ParseResult> {
     const msFile = zip.file('Metadata/model_settings.config');
     if (msFile) {
       const msXml = await msFile.async('text');
-      const msDoc = domParser.parseFromString(msXml, 'application/xml');
+      const msDoc = parseXml(msXml);
 
       // Parse object metadata
       const objects = msDoc.getElementsByTagName('object');
@@ -173,7 +173,7 @@ export async function parse3MF(buffer: ArrayBuffer): Promise<ParseResult> {
     const gcodeFile = zip.file('Metadata/custom_gcode_per_layer.xml');
     if (gcodeFile) {
       const gcodeXml = await gcodeFile.async('text');
-      const gcodeDoc = domParser.parseFromString(gcodeXml, 'application/xml');
+      const gcodeDoc = parseXml(gcodeXml);
       plateLayerConfigs = parseLayerColorChanges(gcodeDoc);
       if (plateLayerConfigs.length > 0) {
         debugLog(`[3MF Parser] Layer color changes found for ${plateLayerConfigs.length} plate(s)`);
@@ -302,7 +302,9 @@ export async function parse3MF(buffer: ArrayBuffer): Promise<ParseResult> {
       if (plateInfo.thumbnailFile) {
         try {
           const thumbFile = zip.file(plateInfo.thumbnailFile);
-          if (thumbFile) {
+          // Blob + URL.createObjectURL are browser-only. In Node CLI runs we
+          // simply skip the thumbnail rather than crash the parser.
+          if (thumbFile && typeof Blob !== 'undefined' && typeof URL?.createObjectURL === 'function') {
             const blob = await thumbFile.async('blob');
             thumbnailUrl = URL.createObjectURL(blob);
           }

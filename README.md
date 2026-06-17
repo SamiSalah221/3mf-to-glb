@@ -90,10 +90,65 @@ Then open the Vite URL (usually `http://localhost:5173`) and drop a `.3mf` file
 on the page.
 
 ```bash
-npm run build      # Production build into dist/
-npm run preview    # Preview the production build
-npm run lint       # ESLint
+npm run build           # Production build of the web app into dist/
+npm run preview         # Preview the production build
+npm run lint            # ESLint
+npm run build:lib       # Build the headless library + CLI into dist-lib/
+npm run test:roundtrip  # End-to-end smoke test across samples/
 ```
+
+## Use it from Node (CLI)
+
+The same parser that drives the web app is also published as a Node CLI for
+batch jobs, build pipelines, and headless renderers. No backend required.
+
+```bash
+# Convert a 3MF to GLB, recolor filaments 1 and 2 in the process:
+npx 3mf-to-glb model.3mf -o recolored.glb --recolor "1=#cc0000,2=#000000"
+
+# Pick a specific plate from a multi-plate file:
+npx 3mf-to-glb model.3mf --plate 2 -o plate2.glb
+```
+
+Flags:
+
+| Flag | Description |
+|------|-------------|
+| `-o, --output <file>` | Output GLB path. Defaults to the input name with `.glb`. |
+| `--plate <id>` | 1-based plate id (matches Bambu / Orca / U1 `plater_id`). Defaults to the first plate. |
+| `--recolor <map>` | Comma-separated `index=hex` pairs applied before export. Hex may include or omit the leading `#`. |
+| `-h, --help` | Show full help. |
+
+## Use it from your own code (library)
+
+The package exports a small, framework-agnostic API. Three.js is the only
+runtime dependency for GLB emission; the parser itself is pure TypeScript.
+
+```ts
+import { readFile, writeFile } from 'node:fs/promises';
+import { DOMParser } from '@xmldom/xmldom';
+import {
+  setDefaultDomParser,
+  parse3MF,
+  applyRecolor,
+  buildSceneFromPlate,
+  buildGLBBytes,
+} from '3mf-to-glb';
+
+// In Node, inject the XML parser once at startup. In the browser, omit
+// this — the global DOMParser is used automatically.
+setDefaultDomParser(new DOMParser());
+
+const buf = await readFile('model.3mf');
+const parsed = await parse3MF(buf);
+const recolored = applyRecolor(parsed, { 1: '#FF0000', 2: '#00FF00' });
+const scene = buildSceneFromPlate(recolored.plates[0].meshChunks, recolored.filaments);
+const bytes = await buildGLBBytes(scene);
+await writeFile('out.glb', bytes);
+```
+
+For the one-shot common case there is also a `convertToGLB(buffer, options)`
+convenience that wraps the four calls above.
 
 ## Under the hood
 

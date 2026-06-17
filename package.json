@@ -1,7 +1,7 @@
 {
   "name": "3mf-to-glb",
-  "version": "1.0.0",
-  "description": "Open-source, browser-based color editor for multi-color 3MF files (Bambu / OrcaSlicer / U1 family). Re-paint color zones in an interactive 3D viewer and export a production-ready GLB. 100% client-side, MIT-licensed.",
+  "version": "1.1.0",
+  "description": "Open-source color customizer for multi-color 3MF files from the Snapmaker U1 / OrcaSlicer / Bambu ecosystem. Recolor zones in a browser, export GLB or 3MF, or convert in Node via the CLI. 100% client-side, MIT-licensed.",
   "author": "Sami Salah",
   "license": "MIT",
   "homepage": "https://samisalah221.github.io/3mf-to-glb/",
@@ -16,6 +16,7 @@
     "3mf",
     "glb",
     "gltf",
+    "usdz",
     "3d-printing",
     "three.js",
     "react",
@@ -25,14 +26,41 @@
     "snapmaker-u1",
     "open-source",
     "khronos-gltf",
-    "color-customizer"
+    "color-customizer",
+    "cli"
   ],
   "type": "module",
+  "main": "./dist-lib/lib/index.js",
+  "types": "./dist-lib/lib/index.d.ts",
+  "bin": {
+    "3mf-to-glb": "./dist-lib/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist-lib/lib/index.d.ts",
+      "import": "./dist-lib/lib/index.js"
+    },
+    "./cli": {
+      "types": "./dist-lib/cli/index.d.ts",
+      "import": "./dist-lib/cli/index.js"
+    }
+  },
+  "files": [
+    "dist-lib",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:lib": "tsc -p tsconfig.lib.json && node scripts/postbuild-lib.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cli": "node dist-lib/cli/index.js",
+    "test:roundtrip": "node scripts/test-roundtrip.mjs"
   },
   "dependencies": {
     "@gltf-transform/core": "^4.3.0",
@@ -41,6 +69,7 @@
     "@react-three/postprocessing": "^3.0.4",
     "@tailwindcss/vite": "^4.2.1",
     "@types/three": "^0.183.1",
+    "@xmldom/xmldom": "^0.9.10",
     "autoprefixer": "^10.4.27",
     "fast-xml-parser": "^5.5.3",
     "jszip": "^3.10.1",
