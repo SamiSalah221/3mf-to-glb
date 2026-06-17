@@ -43,6 +43,11 @@ export function setExportScene(scene: THREE.Object3D) {
   sceneRef = scene;
 }
 
+/** Returns the live viewer scene registered by setExportScene, or null. */
+export function getExportScene(): THREE.Object3D | null {
+  return sceneRef;
+}
+
 export async function exportGLB(filename = 'customized-model.glb'): Promise<void> {
   if (!sceneRef) throw new Error('No scene to export');
   const bytes = await buildGLBBytes(sceneRef);
