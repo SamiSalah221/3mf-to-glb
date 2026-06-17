@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ParseResult, FilamentSlot } from '../types';
+import type { ParseResult, FilamentSlot, Dimensions } from '../types';
 
 interface AppStore {
   // File state
@@ -23,6 +23,10 @@ interface AppStore {
   // the printed face points at the camera (matches Bambu's preview orientation).
   thinAxis: 'x' | 'y' | 'z' | null;
 
+  // Physical dimensions of the current plate (derived from buildSceneFromPlate
+  // after the unit-to-meters bake). Drives the on-screen W x H x D readout.
+  dimensions: Dimensions | null;
+
   // Actions
   setFile: (f: File) => void;
   setLoading: (loading: boolean) => void;
@@ -32,6 +36,7 @@ interface AppStore {
   selectFilament: (index: number | null) => void;
   setFilamentColor: (index: number, color: string) => void;
   setThinAxis: (axis: 'x' | 'y' | 'z' | null) => void;
+  setDimensions: (dim: Dimensions | null) => void;
   resetColors: () => void;
   reset: () => void;
 }
@@ -46,6 +51,7 @@ export const useAppStore = create<AppStore>((set) => ({
   currentPlateId: null,
   selectedFilamentIndex: null,
   thinAxis: null,
+  dimensions: null,
 
   setFile: (f) => set({ file: f, error: null }),
 
@@ -75,6 +81,8 @@ export const useAppStore = create<AppStore>((set) => ({
 
   setThinAxis: (axis) => set({ thinAxis: axis }),
 
+  setDimensions: (dim) => set({ dimensions: dim }),
+
   resetColors: () =>
     set((state) => ({
       filaments: state.filaments.map((f) => ({ ...f, currentColor: f.originalColor })),
@@ -91,5 +99,6 @@ export const useAppStore = create<AppStore>((set) => ({
       currentPlateId: null,
       selectedFilamentIndex: null,
       thinAxis: null,
+      dimensions: null,
     }),
 }));

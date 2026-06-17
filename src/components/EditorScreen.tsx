@@ -1,6 +1,7 @@
 import { PlateSelector } from './ZonePanel';
 import { ColorPickerPanel } from './ColorPicker';
 import { ExportButton } from './ExportButton';
+import { DimensionsReadout } from './DimensionsReadout';
 import { ViewerCanvas } from '../viewer/ViewerCanvas';
 import { useAppStore } from '../store/useAppStore';
 
@@ -23,6 +24,7 @@ export function EditorScreen() {
         >
           New File
         </button>
+        <DimensionsReadout />
       </div>
 
       {/* Right sidebar: Color picker + Export */}

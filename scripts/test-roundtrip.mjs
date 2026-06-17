@@ -1,4 +1,5 @@
-// End-to-end smoke for the headless library, CLI, and the new 3MF write-back.
+// End-to-end smoke for the headless library, CLI, 3MF write-back, and the
+// real-world-scale GLB export.
 //
 // For every fixture in samples/:
 //   1. parse → produces ParseResult
@@ -6,11 +7,19 @@
 //   3. exportRecolored3MF → fresh 3MF bytes
 //   4. parse the rewritten 3MF → assert every filament's currentColor is #FF00FF
 //   5. convertToGLB on the rewritten 3MF → assert GLB magic + version
+//
+// Plus a synthetic 100 mm-cube test (no on-disk fixture needed):
+//   6. Build a minimal 3MF in memory with unit="millimeter" and an 8-vertex
+//      cube whose coordinates are 0..100.
+//   7. convertToGLB and parse the asset.extras + POSITION accessor min/max.
+//      The bbox MUST be 0.1 x 0.1 x 0.1 meters within float tolerance and
+//      asset.extras.dimensions_mm MUST report 100 x 100 x 100.
 
 import { readFile } from 'node:fs/promises';
 import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DOMParser } from '@xmldom/xmldom';
+import JSZip from 'jszip';
 import '../dist-lib/cli/nodePolyfills.js';
 import {
   setDefaultDomParser,
@@ -22,17 +31,25 @@ import {
 
 setDefaultDomParser(new DOMParser());
 
-const SAMPLES = readdirSync('samples').filter((n) => n.endsWith('.3mf'));
-if (SAMPLES.length === 0) {
-  console.error('no .3mf fixtures found in samples/');
-  process.exit(1);
-}
-
 const GLB_MAGIC = 0x46546c67;
 const TARGET = '#FF00FF';
+const SAMPLES = readdirSync('samples').filter((n) => n.endsWith('.3mf'));
 
 let pass = 0;
 let fail = 0;
+
+function reportPass(label) {
+  console.log(`  PASS ${label}`);
+  pass++;
+}
+function reportFail(label, err) {
+  console.error(`  FAIL ${label}: ${(err && err.message) || err}`);
+  fail++;
+}
+
+// ---------------------------------------------------------------------------
+// Fixture round-trip
+// ---------------------------------------------------------------------------
 
 for (const name of SAMPLES) {
   const path = resolve('samples', name);
@@ -59,15 +76,159 @@ for (const name of SAMPLES) {
     if (view.getUint32(0, true) !== GLB_MAGIC) throw new Error('GLB magic mismatch');
     if (view.getUint32(4, true) !== 2) throw new Error('GLB version != 2');
 
-    console.log(
-      `  PASS ${name}: ${parsed.plates.length}p / ${parsed.filaments.length}f, rewritten 3MF ${rewritten.byteLength.toLocaleString()}B, GLB ${bytes.byteLength.toLocaleString()}B`,
+    reportPass(
+      `${name}: ${parsed.plates.length}p / ${parsed.filaments.length}f, ` +
+        `unit=${parsed.sourceUnit}, rewritten 3MF ${rewritten.byteLength.toLocaleString()}B, ` +
+        `GLB ${bytes.byteLength.toLocaleString()}B`,
     );
-    pass++;
   } catch (err) {
-    console.error(`  FAIL ${name}: ${(err && err.message) || err}`);
-    fail++;
+    reportFail(name, err);
   }
+}
+
+// ---------------------------------------------------------------------------
+// 100 mm cube conformance: real-world scale survives the export pipeline
+// ---------------------------------------------------------------------------
+
+try {
+  const cubeBytes = await buildCube3MF(100);
+  const cubeGLB = await convertToGLB(cubeBytes);
+
+  const { extras, posMin, posMax } = readGLBPositionInfo(cubeGLB);
+
+  // POSITION accessor min/max are in the same space as the buffer (meters
+  // after the unit bake). A 100 mm cube centered at origin must span -0.05
+  // to +0.05 on each axis.
+  const size = [posMax[0] - posMin[0], posMax[1] - posMin[1], posMax[2] - posMin[2]];
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(size[i] - 0.1) > 1e-4) {
+      throw new Error(`bbox axis ${i} = ${size[i]} m, expected 0.1 m`);
+    }
+  }
+
+  if (!extras) throw new Error('GLB asset.extras missing');
+  if (extras.source_unit !== 'millimeter') {
+    throw new Error(`extras.source_unit = ${extras.source_unit}, expected "millimeter"`);
+  }
+  for (const axis of ['x', 'y', 'z']) {
+    if (Math.abs(extras.dimensions_mm[axis] - 100) > 1e-2) {
+      throw new Error(`extras.dimensions_mm.${axis} = ${extras.dimensions_mm[axis]}, expected 100`);
+    }
+    if (Math.abs(extras.dimensions_m[axis] - 0.1) > 1e-5) {
+      throw new Error(`extras.dimensions_m.${axis} = ${extras.dimensions_m[axis]}, expected 0.1`);
+    }
+  }
+
+  reportPass(
+    `100 mm cube: GLB bbox ${size.map((v) => v.toFixed(4)).join(' x ')} m, ` +
+      `extras.dimensions_mm=${JSON.stringify(extras.dimensions_mm)}`,
+  );
+} catch (err) {
+  reportFail('100 mm cube', err);
 }
 
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail === 0 ? 0 : 1);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a minimal 3MF archive in memory containing one cubic mesh of the
+ * given side length. unit="millimeter" is explicit so the unit parser path
+ * is exercised end to end.
+ */
+async function buildCube3MF(sideMm) {
+  const s = sideMm;
+  const vertices = [
+    [0, 0, 0], [s, 0, 0], [s, s, 0], [0, s, 0],
+    [0, 0, s], [s, 0, s], [s, s, s], [0, s, s],
+  ];
+  // Two triangles per face, outward winding.
+  const triangles = [
+    [0, 2, 1], [0, 3, 2], // bottom -Z
+    [4, 5, 6], [4, 6, 7], // top +Z
+    [0, 1, 5], [0, 5, 4], // front -Y
+    [2, 3, 7], [2, 7, 6], // back +Y
+    [1, 2, 6], [1, 6, 5], // right +X
+    [0, 4, 7], [0, 7, 3], // left -X
+  ];
+  const vXml = vertices.map(([x, y, z]) => `      <vertex x="${x}" y="${y}" z="${z}"/>`).join('\n');
+  const tXml = triangles.map(([a, b, c]) => `      <triangle v1="${a}" v2="${b}" v3="${c}"/>`).join('\n');
+
+  const modelXml = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <mesh>
+        <vertices>
+${vXml}
+        </vertices>
+        <triangles>
+${tXml}
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build>
+    <item objectid="1"/>
+  </build>
+</model>
+`;
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>
+`;
+  const relsXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>
+`;
+
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', contentTypesXml);
+  zip.file('_rels/.rels', relsXml);
+  zip.file('3D/3dmodel.model', modelXml);
+  return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+}
+
+/**
+ * Parse a GLB enough to read asset.extras and the first POSITION accessor's
+ * min/max. We only need the JSON chunk; the binary chunk is ignored.
+ */
+function readGLBPositionInfo(glb) {
+  const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+  if (view.getUint32(0, true) !== GLB_MAGIC) throw new Error('not a GLB');
+  if (view.getUint32(4, true) !== 2) throw new Error('GLB version != 2');
+  const totalLen = view.getUint32(8, true);
+  if (totalLen !== glb.byteLength) throw new Error(`GLB total length mismatch ${totalLen} vs ${glb.byteLength}`);
+
+  // Chunk 0: JSON
+  const jsonLen = view.getUint32(12, true);
+  const jsonType = view.getUint32(16, true);
+  if (jsonType !== 0x4e4f534a) throw new Error('expected JSON chunk first');
+  const jsonBytes = new Uint8Array(glb.buffer, glb.byteOffset + 20, jsonLen);
+  const json = JSON.parse(new TextDecoder().decode(jsonBytes));
+
+  let posMin = null;
+  let posMax = null;
+  for (const mesh of json.meshes ?? []) {
+    for (const prim of mesh.primitives ?? []) {
+      const accIdx = prim.attributes?.POSITION;
+      if (accIdx == null) continue;
+      const acc = json.accessors[accIdx];
+      if (acc?.min && acc?.max) {
+        posMin = acc.min;
+        posMax = acc.max;
+        break;
+      }
+    }
+    if (posMin) break;
+  }
+  if (!posMin) throw new Error('no POSITION accessor with min/max found');
+
+  return { extras: json.asset?.extras ?? null, posMin, posMax };
+}

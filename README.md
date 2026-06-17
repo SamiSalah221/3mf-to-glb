@@ -83,6 +83,11 @@ no vendor lock-in.
 - **USDZ export and View-in-AR.** Preview the recolored model in iOS Quick
   Look (USDZ) or Android Scene Viewer (GLB) from the live demo, fully
   client-side. Useful for previewing a print before you spend filament.
+- **Real-world scale.** The `<model unit>` from the source 3MF is parsed
+  (micron, millimeter, centimeter, inch, foot, meter), baked into the
+  exported vertex positions in meters, and surfaced as `asset.extras` on
+  the GLB plus a W × H × D readout in the viewport. AR launchers lock the
+  model to its true size, so a 100 mm cube shows up as a 10 cm cube.
 - **Works across the U1 / OrcaSlicer / Bambu family.** Same `paint_color`
   encoding, same plate/object model, no per-vendor branching in the parser.
 - **100% client-side.** Pure static site, no backend, no telemetry. Works
@@ -257,7 +262,10 @@ Already shipped:
 - 3MF re-tint round-trip: re-export the source archive with new filament
   colors and have it slice cleanly in OrcaSlicer / Snapmaker U1.
 - USDZ export and a platform-aware "View in AR" launcher (Quick Look on iOS,
-  Scene Viewer on Android, GLB download on desktop).
+  Scene Viewer on Android, GLB download on desktop). True-size AR: the
+  source 3MF unit is baked into the exported vertex positions in meters,
+  Scene Viewer is launched with `resizable=false`, and Quick Look with
+  `allowsContentScaling=0`.
 - One-click "Try with U1 sample" entry point on the live demo and a curated
   set of multi-color 3MF fixtures in [`samples/`](./samples).
 - CI (lint, web build, library build, CLI smoke, four-sample round-trip) on

@@ -72,6 +72,13 @@ the round-trip CI tests in this repo.
 - **Multi-format export** (GLB + USDZ + 3MF) and a platform-aware AR launcher
   (Quick Look on iOS, Scene Viewer on Android, GLB download on desktop), all
   client-side.
+- **Real-world scale** end-to-end. The 3MF `<model unit>` is parsed (every
+  legal value: micron through meter), baked into the exported vertex
+  positions in meters, surfaced as `asset.extras` on the GLB, and
+  cross-checked by a 100 mm-cube conformance test that asserts the exported
+  GLB bounding box is 0.1 m on each axis. Scene Viewer and Quick Look are
+  launched with their fixed-scale flags so AR previews show true print
+  size, not a pinch-zoomable cartoon.
 
 ### 2. Openness and quality
 
