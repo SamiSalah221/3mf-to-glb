@@ -6,16 +6,35 @@ on:
     branches: [main, master]
 
 jobs:
-  lint-and-build:
+  web-app:
+    name: Lint + web build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+  library-and-cli:
+    name: Library build + round-trip smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build headless library and CLI
+        run: npm run build:lib
+      - name: CLI smoke (kuwait sample → GLB)
+        run: |
+          node dist-lib/cli/index.js samples/kuwait.3mf -o /tmp/kuwait.glb --recolor "1=#cc0000,2=#000000"
+          test -s /tmp/kuwait.glb
+          head -c 4 /tmp/kuwait.glb | od -c | head -1 | grep -q glTF
+      - name: Round-trip smoke across all samples
+        run: npm run test:roundtrip
