@@ -57,6 +57,9 @@ no vendor lock-in.
   changes update live in the Three.js viewport.
 - **PBR GLB export** — one glTF material per color zone, correct sRGB → linear
   conversion, ready for Blender / Unity / WebGL / AR.
+- **3MF re-tint round-trip** — re-emit the source 3MF with new filament
+  colors, geometry and `paint_color` zones intact. The output drops back into
+  OrcaSlicer / Snapmaker U1 and slices.
 - **Works with the U1 / OrcaSlicer ecosystem** — same `paint_color` encoding,
   same plate/object model, no per-vendor branching in the parser.
 - **100% client-side** — pure static site, no backend, no telemetry, works
@@ -216,11 +219,20 @@ turning each layer-range into an independent colored zone.
 
 ## Roadmap
 
+Already shipped:
+
+- Headless TypeScript library (`3mf-to-glb` on npm) usable from Node and the
+  browser, plus a Node CLI for batch jobs.
+- 3MF re-tint round-trip — re-export the source archive with new filament
+  colors and have it slice cleanly in OrcaSlicer / Snapmaker U1.
+
 Near-term work, in rough priority order:
 
 - Native OrcaSlicer / Snapmaker U1 sample 3MF fixtures in
   [`samples/`](./samples), with a one-click "Try with U1 sample" entry point
   on the live demo.
+- USDZ export for iOS Quick Look and a "View in AR" button (GLB on Android
+  Scene Viewer, USDZ on iOS).
 - Drop-in [lib3mf WASM](https://github.com/3MFConsortium/lib3mf) backend so
   the parser passes the official 3MF Consortium conformance suite, replacing
   the current hand-rolled cascade as the default.
