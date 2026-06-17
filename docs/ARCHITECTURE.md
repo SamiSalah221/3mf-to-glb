@@ -74,6 +74,34 @@ Fix: `glbBuilder.buildSceneFromPlate` computes `thinAxis = argmin(size.x, size.y
 
 Do not reintroduce a hard-coded camera position like `[0, 2, 5]` — that 22° tilt was the whole reason a plain white saber on a flag appeared to "extend through and past" the geometry.
 
+## Real-world scale: meters for export, display scale for viewport
+
+`buildSceneFromPlate` no longer normalises the model to a "max-dim = 3" box.
+It bakes the source-unit-to-meters factor (from the parsed `<model unit>`)
+directly into the emitted vertex positions, then recentres the bounding box
+at the origin. The returned `THREE.Group` is identity-transform and
+physically correct: a 100 mm cube produces a 0.1 m bounding box in the
+buffer attributes, which is what Apple Quick Look, Android Scene Viewer,
+and `<model-viewer>` all assume for glTF coordinates.
+
+That leaves the in-app viewport with a problem: at the default camera
+distance (7) a 0.1-unit cube is a speck. `ColorableModel` solves it with a
+display-only wrapper `<group scale={displayScale}>` that scales the
+rendered model up to fit the camera frame, while `setExportScene` registers
+the *inner* meters-baked group with `glbExporter`. The wrapper transform is
+never observed by `GLTFExporter`.
+
+Dimensions are stashed on `group.userData` as `dimensions.{mm,m}` plus
+`bboxMin/MaxM`. `glbExporter.buildGLBBytes` reads them via the
+`BuiltSceneUserData` shape and emits `asset.extras` on the GLB so AR
+runtimes self-describe their true size. The Zustand store mirrors
+`dimensions` for the on-screen `W × H × D` readout.
+
+AR launchers force fixed scale: Scene Viewer with `&resizable=false` on
+the intent URL, Quick Look with `#allowsContentScaling=0` on the USDZ
+hash. The `100 mm cube` step in `scripts/test-roundtrip.mjs` is the
+regression guard.
+
 ## `FrontSide` rendering is load-bearing
 
 `glbBuilder.ts` sets `side: THREE.FrontSide` on `MeshStandardMaterial`. Don't flip this to `DoubleSide` unless you've confirmed the target 3MF has non-manifold meshes. 3MF files are slicer output → watertight with consistent CCW winding, so back-face culling is safe and **necessary** here: with `DoubleSide`, painted-region back faces bleed through the model at oblique camera angles and create phantom color zones.

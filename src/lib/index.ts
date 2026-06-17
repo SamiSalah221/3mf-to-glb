@@ -30,7 +30,12 @@ export type {
   MeshChunk,
   Plate,
   ParseResult,
+  Dimensions,
+  SourceUnit,
 } from '../types/index.js';
+export { UNIT_TO_METERS } from '../types/index.js';
+export type { BuildSceneOptions, BuiltSceneUserData } from './glbBuilder.js';
+export type { GLBAssetExtras } from './glbExporter.js';
 
 import { parse3MF } from './parse3MF.js';
 import { buildSceneFromPlate } from './glbBuilder.js';
@@ -64,6 +69,9 @@ export async function convertToGLB(
     throw new Error(`Plate ${opts.plateId} not found. Available plate ids: ${ids}`);
   }
 
-  const scene = buildSceneFromPlate(plate.meshChunks, parsed.filaments);
+  const scene = buildSceneFromPlate(plate.meshChunks, parsed.filaments, {
+    unitToMeters: parsed.unitToMeters,
+    sourceUnit: parsed.sourceUnit,
+  });
   return buildGLBBytes(scene);
 }

@@ -1,5 +1,22 @@
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import type { BuiltSceneUserData } from './glbBuilder.js';
+
+interface GLTFWriterLike {
+  json: {
+    asset?: { extras?: Record<string, unknown> } & Record<string, unknown>;
+  };
+}
+
+/** Asset-level extras injected on every GLB so AR runtimes can read true size. */
+export interface GLBAssetExtras {
+  source_unit: string;
+  dimensions_mm: { x: number; y: number; z: number };
+  dimensions_m: { x: number; y: number; z: number };
+  bbox_min_m: [number, number, number];
+  bbox_max_m: [number, number, number];
+  generator: string;
+}
 
 /**
  * Build a binary glTF (GLB) from a THREE scene/group.
@@ -10,15 +27,49 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
  *
  * The scene is cloned and the clone is disposed after export, so the live
  * viewer scene is never mutated and no GPU resources leak.
+ *
+ * If the scene's userData carries BuiltSceneUserData (added by
+ * buildSceneFromPlate), we inject the dimensions and source unit into
+ * asset.extras so the GLB self-describes its physical size. AR consumers can
+ * read this directly without re-running the bbox math.
  */
 export async function buildGLBBytes(scene: THREE.Object3D): Promise<Uint8Array> {
   const exporter = new GLTFExporter();
   const exportScene = scene.clone(true);
+
+  const sceneUd = scene.userData as Partial<BuiltSceneUserData>;
+  const hasDimensions =
+    sceneUd.dimensions &&
+    sceneUd.dimensions.m &&
+    sceneUd.dimensions.mm &&
+    sceneUd.dimensions.bboxMinM &&
+    sceneUd.dimensions.bboxMaxM;
+
+  if (hasDimensions && sceneUd.sourceUnit) {
+    const extras: GLBAssetExtras = {
+      source_unit: sceneUd.sourceUnit,
+      dimensions_mm: sceneUd.dimensions!.mm,
+      dimensions_m: sceneUd.dimensions!.m,
+      bbox_min_m: sceneUd.dimensions!.bboxMinM,
+      bbox_max_m: sceneUd.dimensions!.bboxMaxM,
+      generator: '3mf-to-glb',
+    };
+    // GLTFExporter exposes writer.json internally but the public type omits
+    // it. Cast through the lenient shape so we can inject asset.extras.
+    exporter.register((writer) => {
+      const w = writer as unknown as GLTFWriterLike;
+      return {
+        afterParse: () => {
+          if (!w.json.asset) w.json.asset = {};
+          w.json.asset.extras = { ...(w.json.asset.extras ?? {}), ...extras };
+        },
+      };
+    });
+  }
+
   try {
     const result = await exporter.parseAsync(exportScene, { binary: true });
     if (result instanceof ArrayBuffer) return new Uint8Array(result);
-    // GLTFExporter only returns a JSON object when binary is false. If we got
-    // one here, the caller's three runtime is mis-configured.
     throw new Error('GLTFExporter returned glTF JSON; expected GLB binary.');
   } finally {
     exportScene.traverse((child) => {
@@ -32,9 +83,6 @@ export async function buildGLBBytes(scene: THREE.Object3D): Promise<Uint8Array> 
 
 // ---------------------------------------------------------------------------
 // Browser-only convenience layer
-//
-// The viewer registers its current THREE.Group via setExportScene() on mount
-// so the export button can call exportGLB() without prop-drilling the scene.
 // ---------------------------------------------------------------------------
 
 let sceneRef: THREE.Object3D | null = null;

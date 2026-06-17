@@ -52,9 +52,12 @@ export function launchSceneViewer(glbBytes: Uint8Array, filename: string, title:
   const blob = new Blob([new Uint8Array(glbBytes)], { type: 'model/gltf-binary' });
   const url = URL.createObjectURL(blob);
 
+  // resizable=false locks the model to its encoded size in Scene Viewer.
+  // The GLB has already been baked into meters, so the encoded size matches
+  // the real print and the user shouldn't be able to pinch-zoom it.
   const intent =
     `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(url)}` +
-    `&mode=ar_preferred&title=${encodeURIComponent(title)}` +
+    `&mode=ar_preferred&resizable=false&title=${encodeURIComponent(title)}` +
     `#Intent;scheme=https;package=com.google.ar.core;` +
     `S.browser_fallback_url=${encodeURIComponent(url)};end;`;
 

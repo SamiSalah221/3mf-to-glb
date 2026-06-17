@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
-import type { ParseResult, Plate, MeshChunk, FilamentSlot } from '../types/index.js';
+import type { ParseResult, Plate, MeshChunk, FilamentSlot, SourceUnit } from '../types/index.js';
+import { UNIT_TO_METERS } from '../types/index.js';
 import { parseXml } from './parseXml.js';
 
 const DEBUG = false;
@@ -79,6 +80,13 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
 
   const rootDoc = modelDocs.get('3D/3dmodel.model');
   if (!rootDoc) throw new Error('No root 3dmodel.model found in 3MF archive');
+
+  // 1b. Read the <model unit="..."> declaration. The 3MF spec defaults to
+  // millimeter when the attribute is absent. Sub-model files may declare a
+  // different unit; the spec requires it to match the root, so we read the
+  // root only.
+  const sourceUnit = parseSourceUnit(rootDoc.documentElement?.getAttribute('unit'));
+  const unitToMeters = UNIT_TO_METERS[sourceUnit];
 
   // 2. Load filament colors from Bambu project settings
   let filamentColors: string[] = [];
@@ -344,10 +352,23 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
     debugLog(`[3MF Parser] Plate ${plate.id} "${plate.name}": filaments=[${plate.filamentIndicesUsed}] chunks=[${chunkSummary}]`);
   }
 
-  return { plates: nonEmptyPlates, filaments };
+  return { plates: nonEmptyPlates, filaments, sourceUnit, unitToMeters };
 }
 
 // ---- Helpers ----
+
+function parseSourceUnit(raw: string | null | undefined): SourceUnit {
+  // 3MF spec: the <model unit> attribute is optional and defaults to
+  // millimeter. Legal values are micron / millimeter / centimeter / inch /
+  // foot / meter. Anything else falls back to millimeter so an
+  // out-of-spec file still renders.
+  if (!raw) return 'millimeter';
+  const v = raw.trim().toLowerCase();
+  if (v === 'micron' || v === 'millimeter' || v === 'centimeter' || v === 'inch' || v === 'foot' || v === 'meter') {
+    return v;
+  }
+  return 'millimeter';
+}
 
 function normalizeHex(color: string): string {
   if (!color.startsWith('#')) color = '#' + color;
