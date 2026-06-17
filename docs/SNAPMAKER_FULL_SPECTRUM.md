@@ -20,7 +20,7 @@ ship for the U1's specific color tools to round-trip end-to-end.
 The U1 slicer is a fork of the BambuStudio / OrcaSlicer lineage and emits the
 same 3MF container conventions (`project_settings.config`, `model_settings.config`,
 component sub-models under `3D/Objects/`). The proprietary `paint_color`
-attribute on per-triangle elements is shared across the family — same
+attribute on per-triangle elements is shared across the family. Same
 right-to-left nibble-packed subdivision tree, same `EnforcerBlockerType`
 state encoding. See
 [`3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md`](./3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
@@ -30,8 +30,8 @@ This means:
 | Snapmaker tool output | Underlying 3MF mechanism | Handled today? |
 |-----------------------|--------------------------|----------------|
 | Standard MMU painting | `paint_color` per-face nibble tree | Yes |
-| Full Spectrum (Z-band gradient) | `custom_gcode_per_layer.xml` tool-change layers (MultiAsSingle mode) | Yes — Z-plane triangle clipping in `parse3MF.ts` |
-| Surface Color Stitch (2D image projection) | Likely texture-2d-coord + `<m:texture2dgroup>` + image asset | **No** — texture binding is on the deferred list |
+| Full Spectrum (Z-band gradient) | `custom_gcode_per_layer.xml` tool-change layers (MultiAsSingle mode) | Yes, via Z-plane triangle clipping in `parse3MF.ts` |
+| Surface Color Stitch (2D image projection) | Likely texture-2d-coord + `<m:texture2dgroup>` + image asset | **No**. Texture binding is on the deferred list |
 | Per-part extruder override | `<part>` metadata in `model_settings.config` | Yes |
 
 The first three rows cover the bulk of U1 color print use cases. Surface
@@ -54,8 +54,8 @@ explosive subdivision), the parser would need:
    archive. This is straightforward once the read path exists.
 
 Estimated effort: a focused week of work to read, render, recolor (texture
-tint), and re-pack. The current parser's chunk model is the right shape — it
-already separates geometry into chunks by material — so the change is local
+tint), and re-pack. The current parser's chunk model is the right shape: it
+already separates geometry into chunks by material, so the change is local
 to `parse3MF.ts`, `glbBuilder.ts`, and `build3MF.ts`.
 
 ## Why this is not in the initial release

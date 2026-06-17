@@ -28,9 +28,9 @@ concrete wins:
     libzip and zlib both have known Emscripten ports.
   - Writing a TypeScript binding layer over the C API (handles, error codes,
     enum mappings).
-  - Sizing: a release WASM build of lib3mf with extensions is around 3–5 MB
-    after Brotli. For a static demo this is loadable but non-trivial — code
-    splitting and lazy loading would be required.
+  - Sizing: a release WASM build of lib3mf with extensions is around 3 to 5
+    MB after Brotli. For a static demo this is loadable but non-trivial, and
+    code splitting and lazy loading would be required.
 
 ## Plan
 
