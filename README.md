@@ -61,6 +61,9 @@ no vendor lock-in.
 - **3MF re-tint round-trip** — re-emit the source 3MF with new filament
   colors, geometry and `paint_color` zones intact. The output drops back into
   OrcaSlicer / Snapmaker U1 and slices.
+- **USDZ export and View-in-AR** — preview the recolored model in iOS Quick
+  Look (USDZ) or Android Scene Viewer (GLB) from the live demo, fully
+  client-side. Useful for previewing a print before you spend filament on it.
 - **Works with the U1 / OrcaSlicer ecosystem** — same `paint_color` encoding,
   same plate/object model, no per-vendor branching in the parser.
 - **100% client-side** — pure static site, no backend, no telemetry, works
@@ -228,11 +231,11 @@ Already shipped:
   colors and have it slice cleanly in OrcaSlicer / Snapmaker U1.
 - One-click "Try with U1 sample" entry point on the live demo and a curated
   set of multi-color 3MF fixtures in [`samples/`](./samples).
+- USDZ export and "View in AR" launcher — Quick Look on iOS, Scene Viewer
+  on Android, GLB download as the desktop fallback.
 
 Near-term work, in rough priority order:
 
-- USDZ export for iOS Quick Look and a "View in AR" button (GLB on Android
-  Scene Viewer, USDZ on iOS).
 - Drop-in [lib3mf WASM](https://github.com/3MFConsortium/lib3mf) backend so
   the parser passes the official 3MF Consortium conformance suite, replacing
   the current hand-rolled cascade as the default.

@@ -7,6 +7,7 @@
 export { parse3MF } from './parse3MF.js';
 export { buildSceneFromPlate } from './glbBuilder.js';
 export { buildGLBBytes } from './glbExporter.js';
+export { buildUSDZBytes } from './usdzExporter.js';
 export { exportRecolored3MF } from './build3MF.js';
 export {
   srgbToLinear,
