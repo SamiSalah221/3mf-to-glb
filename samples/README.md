@@ -9,10 +9,10 @@ also covers the U1 path. The full encoding spec lives in
 
 | File | Plates | Filaments | What it tests |
 |------|-------:|----------:|---------------|
-| `kuwait.3mf` | 2 | 4 | Per-face `paint_color` subdivision trees. Reproduces the "white-seam" boundary-triangle voting bug fixed in the parser. The default "Try with U1 sample" entry point in the live demo. |
+| `watchful-owl.3mf` | 1 | 4 | Large multi-material model. Stress-tests the chunking and GLB exporter. The default "Try with U1 sample" entry point in the live demo. |
+| `kuwait.3mf` | 2 | 4 | Per-face `paint_color` subdivision trees. Reproduces the "white-seam" boundary-triangle voting bug fixed in the parser. |
 | `turkey.3mf` | 2 | 2 | Anchor-part inheritance (`extruder="0"` parts in the Image-to-Keychain template). Reproduces the gray-block bug fixed in the parser. |
 | `hijri-calendar.3mf` | 4 | 4 | Multi-plate archive with shared filaments across plates. |
-| `watchful-owl.3mf` | 1 | 4 | Large multi-material model. Stress-tests the chunking and GLB exporter. |
 
 ## Use from the live demo
 

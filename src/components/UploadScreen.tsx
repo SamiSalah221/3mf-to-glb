@@ -4,9 +4,9 @@ import { useAppStore } from '../store/useAppStore';
 import { parse3MF } from '../lib/parse3MF';
 // Vite asset import: kept out of the JS bundle, emitted as a hashed file
 // next to index.html. Lets the demo offer a sample without any upload.
-import u1SampleUrl from '../../samples/kuwait.3mf?url';
+import u1SampleUrl from '../../samples/watchful-owl.3mf?url';
 
-const U1_SAMPLE_NAME = 'kuwait-u1-sample.3mf';
+const U1_SAMPLE_NAME = 'watchful-owl-u1-sample.3mf';
 
 export function UploadScreen() {
   const { setFile, setLoading, setError, setParsed } = useAppStore();
