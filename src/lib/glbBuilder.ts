@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { MeshChunk, FilamentSlot } from '../types';
-import { hexToLinearRGBA } from './colorConvert';
+import type { MeshChunk, FilamentSlot } from '../types/index.js';
+import { hexToLinearRGBA } from './colorConvert.js';
 
 export function buildSceneFromPlate(
   meshChunks: MeshChunk[],
