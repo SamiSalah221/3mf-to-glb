@@ -20,8 +20,9 @@ No installs, no uploads, no servers.**
 
 **→ <https://samisalah221.github.io/3mf-to-glb/>**
 
-No sign-up, no upload. If you don't have a `.3mf` handy, grab one of the
-example files in [`samples/`](./samples) and drop it on the page.
+No sign-up, no upload. If you don't have a `.3mf` handy, hit
+**"Try with a Snapmaker U1 / OrcaSlicer sample"** on the upload screen, or
+grab one of the fixtures in [`samples/`](./samples) and drop it on the page.
 
 ## Why this project exists
 
@@ -225,12 +226,11 @@ Already shipped:
   browser, plus a Node CLI for batch jobs.
 - 3MF re-tint round-trip — re-export the source archive with new filament
   colors and have it slice cleanly in OrcaSlicer / Snapmaker U1.
+- One-click "Try with U1 sample" entry point on the live demo and a curated
+  set of multi-color 3MF fixtures in [`samples/`](./samples).
 
 Near-term work, in rough priority order:
 
-- Native OrcaSlicer / Snapmaker U1 sample 3MF fixtures in
-  [`samples/`](./samples), with a one-click "Try with U1 sample" entry point
-  on the live demo.
 - USDZ export for iOS Quick Look and a "View in AR" button (GLB on Android
   Scene Viewer, USDZ on iOS).
 - Drop-in [lib3mf WASM](https://github.com/3MFConsortium/lib3mf) backend so
