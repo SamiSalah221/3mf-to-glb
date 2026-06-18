@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ParseResult, FilamentSlot, Dimensions, PivotMode } from '../types';
+import type { ParseResult, FilamentSlot, Dimensions, PivotMode, RotationQuat } from '../types';
 
 interface AppStore {
   // File state
@@ -38,6 +38,13 @@ interface AppStore {
   // Custom pivot offset in mm (only used when pivotMode === 'custom').
   customPivotMm: [number, number, number];
 
+  // User-applied model orientation as a unit quaternion [x, y, z, w].
+  // Identity ([0, 0, 0, 1]) means no rotation. The quaternion is the
+  // source of truth; the Euler readout in the UI is derived. Baked into
+  // GLB / USDZ vertex positions + normals at export time, NOT into the
+  // 3MF write-back (which would change the print-bed orientation).
+  rotationQuat: RotationQuat;
+
   // Actions
   setFile: (f: File) => void;
   setLoading: (loading: boolean) => void;
@@ -51,9 +58,13 @@ interface AppStore {
   setBboxCenterM: (c: [number, number, number] | null) => void;
   setPivotMode: (m: PivotMode) => void;
   setCustomPivotMm: (mm: [number, number, number]) => void;
+  setRotationQuat: (q: RotationQuat) => void;
+  resetRotation: () => void;
   resetColors: () => void;
   reset: () => void;
 }
+
+const IDENTITY_QUAT: RotationQuat = [0, 0, 0, 1];
 
 export const useAppStore = create<AppStore>((set) => ({
   file: null,
@@ -69,6 +80,7 @@ export const useAppStore = create<AppStore>((set) => ({
   bboxCenterM: null,
   pivotMode: 'base-center',
   customPivotMm: [0, 0, 0],
+  rotationQuat: IDENTITY_QUAT,
 
   setFile: (f) => set({ file: f, error: null }),
 
@@ -106,6 +118,10 @@ export const useAppStore = create<AppStore>((set) => ({
 
   setCustomPivotMm: (mm) => set({ customPivotMm: mm }),
 
+  setRotationQuat: (q) => set({ rotationQuat: q }),
+
+  resetRotation: () => set({ rotationQuat: IDENTITY_QUAT }),
+
   resetColors: () =>
     set((state) => ({
       filaments: state.filaments.map((f) => ({ ...f, currentColor: f.originalColor })),
@@ -124,8 +140,10 @@ export const useAppStore = create<AppStore>((set) => ({
       thinAxis: null,
       dimensions: null,
       bboxCenterM: null,
-      // Keep pivotMode + customPivotMm across resets so the user's
-      // preferred pivot survives "New File". They likely want the same
-      // export setting on the next 3MF too.
+      // Reset rotation on "New File" because orientation is intrinsically
+      // per-model: a +90 X that stood up model A may lay model B on its
+      // face. pivotMode + customPivotMm intentionally persist (the user's
+      // export preference is unlikely to flip per file).
+      rotationQuat: IDENTITY_QUAT,
     }),
 }));

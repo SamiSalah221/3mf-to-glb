@@ -28,6 +28,13 @@ import type { FilamentRecolorMap } from './recolor.js';
  *   does not capture (the decoder voting flattens sub-triangle detail).
  *   That's tracked separately.
  *
+ *   The user-applied orientation that gets baked into the GLB / USDZ at
+ *   export is deliberately NOT baked into the 3MF write-back. Rotating
+ *   for AR ("stand it up so it looks right on the floor") is the opposite
+ *   of what a slicer wants ("keep my print-bed layout"). If the user ever
+ *   needs a reoriented 3MF for re-slicing, that should be a separate,
+ *   explicit "reorient for slicing" toggle (default off).
+ *
  * The output is a fresh ZIP. JSZip's default DEFLATE settings are stable
  * across versions, so two consecutive write-backs of an unchanged input
  * produce identical bytes apart from the in-file modification dates.

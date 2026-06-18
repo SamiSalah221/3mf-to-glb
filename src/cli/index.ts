@@ -18,6 +18,7 @@ import {
   parseRecolorArg,
   setDefaultDomParser,
   type FilamentRecolorMap,
+  type PivotMode,
 } from '../lib/index.js';
 
 interface CliArgs {
@@ -25,24 +26,49 @@ interface CliArgs {
   output: string;
   plate?: number;
   recolor?: FilamentRecolorMap;
+  pivot?: PivotMode;
+  rotation?: [number, number, number];
   showHelp: boolean;
+}
+
+const VALID_PIVOTS: readonly PivotMode[] = [
+  'base-center',
+  'bbox-center',
+  'centroid',
+  'original',
+  'custom',
+];
+
+function parseRotation(raw: string): [number, number, number] {
+  const parts = raw.split(',').map((s) => Number(s.trim()));
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
+    throw new Error(`--rotation expects "x,y,z" degrees, got "${raw}"`);
+  }
+  return [parts[0], parts[1], parts[2]];
 }
 
 const HELP = `3mf-to-glb — convert a multi-color 3MF to GLB
 
 Usage:
   3mf-to-glb <input.3mf> [-o output.glb] [--plate N] [--recolor "1=#hex,2=#hex"]
+                          [--pivot MODE] [--rotation "x,y,z"]
 
 Options:
   -o, --output <file>     Output GLB path (default: input filename with .glb)
       --plate <id>        1-based plate id to export (default: first plate)
       --recolor <map>     Comma-separated index=hex pairs applied before export
+      --pivot <mode>      Export pivot: base-center (default), bbox-center,
+                          centroid, original, custom
+      --rotation <x,y,z>  XYZ Euler rotation in degrees, baked into geometry
+                          before the pivot. Useful for glTF Y-up reorientation
+                          of a Z-up source (try "90,0,0").
   -h, --help              Show this message
 
 Examples:
   3mf-to-glb model.3mf
   3mf-to-glb model.3mf -o recolored.glb --recolor "1=#cc0000,2=#000000"
   3mf-to-glb model.3mf --plate 2 -o plate2.glb
+  3mf-to-glb model.3mf --rotation "90,0,0" -o yup.glb
 `;
 
 function parseArgs(argv: string[]): CliArgs {
@@ -66,6 +92,19 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case '--recolor':
         result.recolor = parseRecolorArg(argv[++i] ?? '');
+        break;
+      case '--pivot': {
+        const raw = argv[++i] ?? '';
+        if (!VALID_PIVOTS.includes(raw as PivotMode)) {
+          throw new Error(
+            `--pivot expects one of ${VALID_PIVOTS.join(', ')}, got "${raw}"`,
+          );
+        }
+        result.pivot = raw as PivotMode;
+        break;
+      }
+      case '--rotation':
+        result.rotation = parseRotation(argv[++i] ?? '');
         break;
       default:
         if (arg.startsWith('-')) throw new Error(`Unknown flag: ${arg}`);
@@ -104,7 +143,12 @@ async function main(): Promise<number> {
     basename(inputPath, extname(inputPath)) + '.glb';
 
   const buf = await readFile(inputPath);
-  const bytes = await convertToGLB(buf, { plateId: args.plate, recolor: args.recolor });
+  const bytes = await convertToGLB(buf, {
+    plateId: args.plate,
+    recolor: args.recolor,
+    pivotMode: args.pivot,
+    rotationEulerDeg: args.rotation,
+  });
   await writeFile(output, bytes);
 
   process.stdout.write(`wrote ${output} (${bytes.byteLength.toLocaleString()} bytes)\n`);

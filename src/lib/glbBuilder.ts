@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import type { MeshChunk, FilamentSlot, Dimensions, SourceUnit, PivotMode } from '../types/index.js';
+import type {
+  MeshChunk,
+  FilamentSlot,
+  Dimensions,
+  SourceUnit,
+  PivotMode,
+  RotationQuat,
+} from '../types/index.js';
 import { hexToLinearRGBA } from './colorConvert.js';
 
 /**
@@ -35,6 +42,17 @@ export interface BuildSceneOptions {
    * 10 mm along +X relative to the bbox-center default.
    */
   customPivotMm?: [number, number, number];
+  /**
+   * Optional user orientation as a unit quaternion [x, y, z, w]. Identity
+   * (`[0, 0, 0, 1]`) leaves geometry untouched.
+   *
+   * Order of operations is load-bearing and MUST be: scale to meters →
+   * rotate → recompute AABB → pivot translation. If pivot is computed
+   * before rotation the model floats or sinks in AR. The rotation is
+   * baked into positions AND normals so the exported GLB carries an
+   * identity node transform and is self-contained.
+   */
+  rotationQuat?: RotationQuat;
 }
 
 export interface BuiltSceneUserData {
@@ -52,12 +70,20 @@ export interface BuiltSceneUserData {
   pivotMode: PivotMode;
   /**
    * The translation, in meters, baked into vertex positions.
-   * `final_position = (source_position * unitToMeters) + pivotOffsetM`.
+   * `final_position = quat * (source_position * unitToMeters) + pivotOffsetM`.
    * This is the value surfaced on glTF asset.extras.pivot_offset_m.
    */
   pivotOffsetM: [number, number, number];
   /** Bbox center in the final exported space; OrbitControls target sits here. */
   bboxCenterM: [number, number, number];
+  /**
+   * Rotation that was baked into positions + normals. Identity if the user
+   * never rotated. Mirrored to glTF asset.extras so AR consumers can read
+   * what orientation was applied.
+   */
+  appliedRotationQuat: RotationQuat;
+  /** Same rotation expressed as XYZ Euler degrees for human-readable metadata. */
+  appliedRotationEulerDeg: [number, number, number];
 }
 
 /**
@@ -68,6 +94,18 @@ export interface BuiltSceneUserData {
  * identity transform so the bytes that hit GLTFExporter / USDZExporter are
  * physically accurate with no scene-graph transform to interpret.
  */
+const IDENTITY_QUAT: RotationQuat = [0, 0, 0, 1];
+
+function isIdentityQuat(q: RotationQuat): boolean {
+  // Tolerate tiny floating drift from accumulating snaps.
+  return (
+    Math.abs(q[0]) < 1e-9 &&
+    Math.abs(q[1]) < 1e-9 &&
+    Math.abs(q[2]) < 1e-9 &&
+    Math.abs(q[3] - 1) < 1e-9
+  );
+}
+
 export function buildSceneFromPlate(
   meshChunks: MeshChunk[],
   filaments: FilamentSlot[],
@@ -77,34 +115,63 @@ export function buildSceneFromPlate(
   const sourceUnit: SourceUnit = options.sourceUnit ?? 'millimeter';
   const pivotMode: PivotMode = options.pivotMode ?? 'base-center';
   const customPivotMm = options.customPivotMm ?? [0, 0, 0];
+  const rotationInput = options.rotationQuat ?? IDENTITY_QUAT;
+
+  // Normalize the quaternion once. Accumulated snap rotations can drift; a
+  // non-unit quaternion silently scales the geometry.
+  const quat = new THREE.Quaternion(
+    rotationInput[0],
+    rotationInput[1],
+    rotationInput[2],
+    rotationInput[3],
+  ).normalize();
+  const hasRotation = !isIdentityQuat([quat.x, quat.y, quat.z, quat.w]);
 
   const group = new THREE.Group();
   const filamentMap = new Map(filaments.map((f) => [f.index, f.currentColor]));
 
-  // Bbox + (when needed) centroid in source units. One pass over the data.
-  const minSrc = new THREE.Vector3(Infinity, Infinity, Infinity);
-  const maxSrc = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  // Pass 1: bake each chunk's positions into (rotated, meters) space and
+  // accumulate AABB + (optional) centroid in THAT space. Pivot must be
+  // computed from the rotated bbox, so we cannot do this in source units.
+  const wantCentroid = pivotMode === 'centroid';
+  const bakedPositionsPerChunk: Float32Array[] = new Array(meshChunks.length);
+
+  const minR = new THREE.Vector3(Infinity, Infinity, Infinity);
+  const maxR = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
   const centroidAccum = new THREE.Vector3();
   let totalArea = 0;
-  const wantCentroid = pivotMode === 'centroid';
+  const tmp = new THREE.Vector3();
 
-  for (const chunk of meshChunks) {
-    const p = chunk.positions;
-    for (let i = 0; i < p.length; i += 3) {
-      if (p[i] < minSrc.x) minSrc.x = p[i];
-      if (p[i + 1] < minSrc.y) minSrc.y = p[i + 1];
-      if (p[i + 2] < minSrc.z) minSrc.z = p[i + 2];
-      if (p[i] > maxSrc.x) maxSrc.x = p[i];
-      if (p[i + 1] > maxSrc.y) maxSrc.y = p[i + 1];
-      if (p[i + 2] > maxSrc.z) maxSrc.z = p[i + 2];
+  for (let c = 0; c < meshChunks.length; c++) {
+    const chunk = meshChunks[c];
+    const src = chunk.positions;
+    const baked = new Float32Array(src.length);
+
+    for (let i = 0; i < src.length; i += 3) {
+      tmp.set(src[i] * unitToMeters, src[i + 1] * unitToMeters, src[i + 2] * unitToMeters);
+      if (hasRotation) tmp.applyQuaternion(quat);
+      baked[i] = tmp.x;
+      baked[i + 1] = tmp.y;
+      baked[i + 2] = tmp.z;
+      if (tmp.x < minR.x) minR.x = tmp.x;
+      if (tmp.y < minR.y) minR.y = tmp.y;
+      if (tmp.z < minR.z) minR.z = tmp.z;
+      if (tmp.x > maxR.x) maxR.x = tmp.x;
+      if (tmp.y > maxR.y) maxR.y = tmp.y;
+      if (tmp.z > maxR.z) maxR.z = tmp.z;
     }
+
     if (wantCentroid) {
-      for (let i = 0; i < p.length; i += 9) {
-        const cx = (p[i] + p[i + 3] + p[i + 6]) / 3;
-        const cy = (p[i + 1] + p[i + 4] + p[i + 7]) / 3;
-        const cz = (p[i + 2] + p[i + 5] + p[i + 8]) / 3;
-        const ex = p[i + 3] - p[i],     ey = p[i + 4] - p[i + 1], ez = p[i + 5] - p[i + 2];
-        const fx = p[i + 6] - p[i],     fy = p[i + 7] - p[i + 1], fz = p[i + 8] - p[i + 2];
+      for (let i = 0; i < baked.length; i += 9) {
+        const cx = (baked[i] + baked[i + 3] + baked[i + 6]) / 3;
+        const cy = (baked[i + 1] + baked[i + 4] + baked[i + 7]) / 3;
+        const cz = (baked[i + 2] + baked[i + 5] + baked[i + 8]) / 3;
+        const ex = baked[i + 3] - baked[i];
+        const ey = baked[i + 4] - baked[i + 1];
+        const ez = baked[i + 5] - baked[i + 2];
+        const fx = baked[i + 6] - baked[i];
+        const fy = baked[i + 7] - baked[i + 1];
+        const fz = baked[i + 8] - baked[i + 2];
         const nxv = ey * fz - ez * fy;
         const nyv = ez * fx - ex * fz;
         const nzv = ex * fy - ey * fx;
@@ -115,40 +182,60 @@ export function buildSceneFromPlate(
         totalArea += area;
       }
     }
+
+    bakedPositionsPerChunk[c] = baked;
   }
 
-  // Convert all the source-space values into meters before computing pivot.
-  const minM = minSrc.clone().multiplyScalar(unitToMeters);
-  const maxM = maxSrc.clone().multiplyScalar(unitToMeters);
-  const sizeM = maxM.clone().sub(minM);
-  const centerM = minM.clone().add(maxM).multiplyScalar(0.5);
+  const sizeM = maxR.clone().sub(minR);
+  const centerM = minR.clone().add(maxR).multiplyScalar(0.5);
   const centroidM =
     wantCentroid && totalArea > 0
-      ? centroidAccum.clone().multiplyScalar(unitToMeters / totalArea)
+      ? centroidAccum.clone().multiplyScalar(1 / totalArea)
       : centerM.clone();
 
-  // pivotOffsetM is the translation we'll ADD to every vertex (in meters)
-  // so the chosen pivot ends up at (0,0,0). final = src*u + pivotOffsetM.
+  // pivotOffsetM is the translation we'll ADD to every (rotated) vertex
+  // (in meters) so the chosen pivot ends up at (0,0,0).
+  // final = quat * (src * u) + pivotOffsetM.
   const pivotOffsetM = computePivotOffset(
     pivotMode,
-    minM,
+    minR,
     centerM,
     centroidM,
     customPivotMm,
     EXPORT_UP_AXIS,
   );
 
-  for (const chunk of meshChunks) {
-    const baked = new Float32Array(chunk.positions.length);
-    for (let i = 0; i < chunk.positions.length; i += 3) {
-      baked[i]     = chunk.positions[i]     * unitToMeters + pivotOffsetM[0];
-      baked[i + 1] = chunk.positions[i + 1] * unitToMeters + pivotOffsetM[1];
-      baked[i + 2] = chunk.positions[i + 2] * unitToMeters + pivotOffsetM[2];
+  // Pass 2: emit geometry. Apply pivot offset to cached positions and
+  // rotate the (already-unit-length) normals by the same quaternion so
+  // shading and downstream PBR consumers stay correct.
+  const tmpN = new THREE.Vector3();
+  for (let c = 0; c < meshChunks.length; c++) {
+    const chunk = meshChunks[c];
+    const positions = bakedPositionsPerChunk[c];
+
+    for (let i = 0; i < positions.length; i += 3) {
+      positions[i] += pivotOffsetM[0];
+      positions[i + 1] += pivotOffsetM[1];
+      positions[i + 2] += pivotOffsetM[2];
+    }
+
+    let normals: Float32Array;
+    if (hasRotation) {
+      normals = new Float32Array(chunk.normals.length);
+      for (let i = 0; i < chunk.normals.length; i += 3) {
+        tmpN.set(chunk.normals[i], chunk.normals[i + 1], chunk.normals[i + 2]);
+        tmpN.applyQuaternion(quat);
+        normals[i] = tmpN.x;
+        normals[i + 1] = tmpN.y;
+        normals[i + 2] = tmpN.z;
+      }
+    } else {
+      normals = chunk.normals;
     }
 
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(baked, 3));
-    geometry.setAttribute('normal', new THREE.BufferAttribute(chunk.normals, 3));
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
 
     const colorHex = filamentMap.get(chunk.filamentIndex) || '#808080';
     const [r, g, b] = hexToLinearRGBA(colorHex);
@@ -171,14 +258,14 @@ export function buildSceneFromPlate(
 
   // Post-bake bbox in meters.
   const finalMin: [number, number, number] = [
-    minM.x + pivotOffsetM[0],
-    minM.y + pivotOffsetM[1],
-    minM.z + pivotOffsetM[2],
+    minR.x + pivotOffsetM[0],
+    minR.y + pivotOffsetM[1],
+    minR.z + pivotOffsetM[2],
   ];
   const finalMax: [number, number, number] = [
-    maxM.x + pivotOffsetM[0],
-    maxM.y + pivotOffsetM[1],
-    maxM.z + pivotOffsetM[2],
+    maxR.x + pivotOffsetM[0],
+    maxR.y + pivotOffsetM[1],
+    maxR.z + pivotOffsetM[2],
   ];
   const bboxCenterM: [number, number, number] = [
     (finalMin[0] + finalMax[0]) / 2,
@@ -202,6 +289,14 @@ export function buildSceneFromPlate(
         ? 'y'
         : 'z';
 
+  const appliedRotationQuat: RotationQuat = [quat.x, quat.y, quat.z, quat.w];
+  const eulerRad = new THREE.Euler().setFromQuaternion(quat, 'XYZ');
+  const appliedRotationEulerDeg: [number, number, number] = [
+    THREE.MathUtils.radToDeg(eulerRad.x),
+    THREE.MathUtils.radToDeg(eulerRad.y),
+    THREE.MathUtils.radToDeg(eulerRad.z),
+  ];
+
   const userData: BuiltSceneUserData = {
     thinAxis,
     unitToMeters,
@@ -211,6 +306,8 @@ export function buildSceneFromPlate(
     pivotMode,
     pivotOffsetM: [pivotOffsetM[0], pivotOffsetM[1], pivotOffsetM[2]],
     bboxCenterM,
+    appliedRotationQuat,
+    appliedRotationEulerDeg,
   };
   Object.assign(group.userData, userData);
 

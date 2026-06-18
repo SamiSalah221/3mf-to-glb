@@ -70,3 +70,13 @@ export interface ParseResult {
  *  - `custom`: arbitrary X/Y/Z translation entered by the user.
  */
 export type PivotMode = 'base-center' | 'bbox-center' | 'centroid' | 'original' | 'custom';
+
+/**
+ * User-applied orientation captured as a unit quaternion [x, y, z, w].
+ * Identity is [0, 0, 0, 1].
+ *
+ * This is the rotation that gets baked into the exported geometry (positions
+ * + normals) BEFORE the pivot translation, so the rotated bbox is what the
+ * base-center pivot rests on the AR floor.
+ */
+export type RotationQuat = [number, number, number, number];

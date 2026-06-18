@@ -161,6 +161,97 @@ await checkCubePivot('100 mm cube / original', { pivotMode: 'original' }, {
   posMax: [0.1, 0.1, 0.1],
 });
 
+// ---------------------------------------------------------------------------
+// Rotation conformance: order of operations and snap composition.
+//
+// Tests the addendum that lets users reorient before export. The exported
+// bbox must reflect: scale → rotate → recompute bbox → pivot. If the pivot
+// is computed pre-rotation the model floats or sinks in AR.
+// ---------------------------------------------------------------------------
+
+// Flat plate: 100 mm wide on X, 100 mm wide on Y, 10 mm thin on Z. With
+// a Z-up source, this represents a model "lying flat" — exactly the case
+// the addendum was written for.
+const plateBytes = await buildPlate3MF(100, 100, 10);
+
+async function checkRotationCase(label, opts, expect) {
+  try {
+    const glb = await convertToGLB(plateBytes, opts);
+    const { extras, posMin, posMax } = readGLBPositionInfo(glb);
+
+    if (!extras) throw new Error('asset.extras missing');
+
+    for (let i = 0; i < 3; i++) {
+      if (Math.abs(posMin[i] - expect.posMin[i]) > 1e-4) {
+        throw new Error(`posMin[${i}] = ${posMin[i]}, expected ${expect.posMin[i]}`);
+      }
+      if (Math.abs(posMax[i] - expect.posMax[i]) > 1e-4) {
+        throw new Error(`posMax[${i}] = ${posMax[i]}, expected ${expect.posMax[i]}`);
+      }
+    }
+    if (expect.eulerDeg) {
+      const got = extras.applied_rotation_euler_deg;
+      if (!got || got.length !== 3) throw new Error('applied_rotation_euler_deg missing');
+      for (let i = 0; i < 3; i++) {
+        if (Math.abs(got[i] - expect.eulerDeg[i]) > 1e-3) {
+          throw new Error(`applied_rotation_euler_deg[${i}] = ${got[i]}, expected ${expect.eulerDeg[i]}`);
+        }
+      }
+    }
+    if (expect.quat) {
+      const got = extras.applied_rotation_quat;
+      if (!got || got.length !== 4) throw new Error('applied_rotation_quat missing');
+      for (let i = 0; i < 4; i++) {
+        if (Math.abs(got[i] - expect.quat[i]) > 1e-4) {
+          throw new Error(`applied_rotation_quat[${i}] = ${got[i]}, expected ${expect.quat[i]}`);
+        }
+      }
+    }
+    reportPass(
+      `${label}: bbox=[${posMin.map((v) => v.toFixed(3)).join(', ')}]..` +
+        `[${posMax.map((v) => v.toFixed(3)).join(', ')}] m`,
+    );
+  } catch (err) {
+    reportFail(label, err);
+  }
+}
+
+// Identity rotation: the flat plate sits centered on X/Y with the 10 mm
+// thickness rising from Z=0. extras carry [0,0,0] / [0,0,0,1].
+await checkRotationCase('flat plate / no rotation (base-center)', {}, {
+  posMin: [-0.05, -0.05, 0],
+  posMax: [0.05, 0.05, 0.01],
+  eulerDeg: [0, 0, 0],
+  quat: [0, 0, 0, 1],
+});
+
+// +90° about X swaps Y and Z (with sign). The thin 10 mm axis becomes the
+// new Y extent; the previously-horizontal 100 mm Y axis becomes the new
+// Z (up-axis) extent. base-center then re-rests the new bbox min Z at 0.
+await checkRotationCase('flat plate / +90 X (Y becomes up)', {
+  rotationEulerDeg: [90, 0, 0],
+}, {
+  posMin: [-0.05, -0.005, 0],
+  posMax: [0.05, 0.005, 0.1],
+  eulerDeg: [90, 0, 0],
+});
+
+// Compose four +90° X snaps using the same world-space premultiply the UI
+// uses, then export. Result must match identity within float tolerance —
+// this is the "no drift" sanity check from the spec.
+const fourSnaps = composeSnaps([
+  ['x', 90],
+  ['x', 90],
+  ['x', 90],
+  ['x', 90],
+]);
+await checkRotationCase('flat plate / 4 x +90 X composes to identity', {
+  rotationQuat: fourSnaps,
+}, {
+  posMin: [-0.05, -0.05, 0],
+  posMax: [0.05, 0.05, 0.01],
+});
+
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail === 0 ? 0 : 1);
 
@@ -227,6 +318,90 @@ ${tXml}
   zip.file('_rels/.rels', relsXml);
   zip.file('3D/3dmodel.model', modelXml);
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+}
+
+/**
+ * Build a minimal cuboid 3MF with arbitrary X/Y/Z side lengths (mm). Used
+ * to test rotation: a non-cubic plate makes axis swaps observable in the
+ * exported bbox.
+ */
+async function buildPlate3MF(sx, sy, sz) {
+  const vertices = [
+    [0, 0, 0], [sx, 0, 0], [sx, sy, 0], [0, sy, 0],
+    [0, 0, sz], [sx, 0, sz], [sx, sy, sz], [0, sy, sz],
+  ];
+  const triangles = [
+    [0, 2, 1], [0, 3, 2],
+    [4, 5, 6], [4, 6, 7],
+    [0, 1, 5], [0, 5, 4],
+    [2, 3, 7], [2, 7, 6],
+    [1, 2, 6], [1, 6, 5],
+    [0, 4, 7], [0, 7, 3],
+  ];
+  const vXml = vertices.map(([x, y, z]) => `      <vertex x="${x}" y="${y}" z="${z}"/>`).join('\n');
+  const tXml = triangles.map(([a, b, c]) => `      <triangle v1="${a}" v2="${b}" v3="${c}"/>`).join('\n');
+
+  const modelXml = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <mesh>
+        <vertices>
+${vXml}
+        </vertices>
+        <triangles>
+${tXml}
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build>
+    <item objectid="1"/>
+  </build>
+</model>
+`;
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>
+`;
+  const relsXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>
+`;
+
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', contentTypesXml);
+  zip.file('_rels/.rels', relsXml);
+  zip.file('3D/3dmodel.model', modelXml);
+  return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+}
+
+/**
+ * Mirror of the UI's world-space snap composition: each (axis, deg) is
+ * left-multiplied into the accumulating quaternion. Returns [x, y, z, w]
+ * so it can be passed straight to convertToGLB({ rotationQuat }).
+ */
+function composeSnaps(steps) {
+  const RAD = Math.PI / 180;
+  let q = [0, 0, 0, 1];
+  const axes = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+  for (const [axis, deg] of steps) {
+    const a = axes[axis];
+    const h = (deg * RAD) / 2;
+    const s = Math.sin(h);
+    const dx = a[0] * s, dy = a[1] * s, dz = a[2] * s, dw = Math.cos(h);
+    // delta * q (Hamilton product, left-multiply).
+    const x = dw * q[0] + dx * q[3] + dy * q[2] - dz * q[1];
+    const y = dw * q[1] - dx * q[2] + dy * q[3] + dz * q[0];
+    const z = dw * q[2] + dx * q[1] - dy * q[0] + dz * q[3];
+    const w = dw * q[3] - dx * q[0] - dy * q[1] - dz * q[2];
+    const len = Math.hypot(x, y, z, w) || 1;
+    q = [x / len, y / len, z / len, w / len];
+  }
+  return q;
 }
 
 /**
