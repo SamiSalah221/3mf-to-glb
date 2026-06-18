@@ -102,6 +102,44 @@ the intent URL, Quick Look with `#allowsContentScaling=0` on the USDZ
 hash. The `100 mm cube` step in `scripts/test-roundtrip.mjs` is the
 regression guard.
 
+## Export pivot
+
+The "pivot" is the point in the model that lands at the glTF/USDZ origin.
+AR viewers place the origin onto the detected surface and rotate around
+it, so the pivot directly controls how the model sits and spins in AR.
+
+`buildSceneFromPlate` accepts a `pivotMode` option with five values:
+
+- `base-center` (default): centers the two non-up axes and puts the up-axis
+  MIN at 0. The model rests on the AR floor.
+- `bbox-center`: geometric centre at the origin.
+- `centroid`: area-weighted centroid at the origin. Single pass over
+  triangle data, accumulating `centroid_i * area_i` and `area_i`.
+- `original`: no translation. The exported coordinates match the source
+  3MF after the unit-to-meters scale, so the bounding box can be anywhere.
+- `custom`: bbox-centred bake plus a user X/Y/Z offset in mm.
+
+The chosen offset is BAKED into vertex positions, never represented as a
+node transform, so the GLB is self-describing. `asset.extras.pivot_mode`,
+`pivot_offset_m`, and `up_axis` make the choice recoverable.
+
+`EXPORT_UP_AXIS` is currently `'z'` because 3MF is Z-up and we do not yet
+apply a Y-up rotation. The `base-center` preset reads this constant rather
+than hardcoding the up axis, so swapping to Y-up export is a one-line
+change here.
+
+The viewer keeps `OrbitControls.target` on the post-bake bbox centre
+regardless of the pivot mode, so rotation always feels centred. A small
+`<axesHelper>` sits at the export pivot (local origin) so the user can
+see where the GLB origin will be before exporting.
+
+The 3MF write-back path (`exportRecolored3MF`) deliberately ignores the
+export pivot. Shifting the model on the print bed would move it in the
+slicer, which is rarely the user's intent. If a future "reposition for
+slicing" toggle is added, it should plumb the meters offset through
+`Metadata/model_settings.config` build-item transforms, not the vertex
+data.
+
 ## `FrontSide` rendering is load-bearing
 
 `glbBuilder.ts` sets `side: THREE.FrontSide` on `MeshStandardMaterial`. Don't flip this to `DoubleSide` unless you've confirmed the target 3MF has non-manifold meshes. 3MF files are slicer output → watertight with consistent CCW winding, so back-face culling is safe and **necessary** here: with `DoubleSide`, painted-region back faces bleed through the model at oblique camera angles and create phantom color zones.

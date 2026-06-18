@@ -87,45 +87,79 @@ for (const name of SAMPLES) {
 }
 
 // ---------------------------------------------------------------------------
-// 100 mm cube conformance: real-world scale survives the export pipeline
+// 100 mm cube conformance: real-world scale + pivot survive the export.
+//
+// The cube source coords span 0..100mm. After the unit bake the cube is
+// 0.1 m on each axis. The pivot mode controls where the origin sits.
 // ---------------------------------------------------------------------------
 
-try {
-  const cubeBytes = await buildCube3MF(100);
-  const cubeGLB = await convertToGLB(cubeBytes);
+const cubeBytes = await buildCube3MF(100);
 
-  const { extras, posMin, posMax } = readGLBPositionInfo(cubeGLB);
+async function checkCubePivot(label, opts, expect) {
+  try {
+    const glb = await convertToGLB(cubeBytes, opts);
+    const { extras, posMin, posMax } = readGLBPositionInfo(glb);
 
-  // POSITION accessor min/max are in the same space as the buffer (meters
-  // after the unit bake). A 100 mm cube centered at origin must span -0.05
-  // to +0.05 on each axis.
-  const size = [posMax[0] - posMin[0], posMax[1] - posMin[1], posMax[2] - posMin[2]];
-  for (let i = 0; i < 3; i++) {
-    if (Math.abs(size[i] - 0.1) > 1e-4) {
-      throw new Error(`bbox axis ${i} = ${size[i]} m, expected 0.1 m`);
+    const size = [posMax[0] - posMin[0], posMax[1] - posMin[1], posMax[2] - posMin[2]];
+    for (let i = 0; i < 3; i++) {
+      if (Math.abs(size[i] - 0.1) > 1e-4) {
+        throw new Error(`bbox axis ${i} = ${size[i]} m, expected 0.1 m`);
+      }
     }
-  }
 
-  if (!extras) throw new Error('GLB asset.extras missing');
-  if (extras.source_unit !== 'millimeter') {
-    throw new Error(`extras.source_unit = ${extras.source_unit}, expected "millimeter"`);
-  }
-  for (const axis of ['x', 'y', 'z']) {
-    if (Math.abs(extras.dimensions_mm[axis] - 100) > 1e-2) {
-      throw new Error(`extras.dimensions_mm.${axis} = ${extras.dimensions_mm[axis]}, expected 100`);
+    if (!extras) throw new Error('asset.extras missing');
+    if (extras.source_unit !== 'millimeter') {
+      throw new Error(`source_unit = ${extras.source_unit}, expected "millimeter"`);
     }
-    if (Math.abs(extras.dimensions_m[axis] - 0.1) > 1e-5) {
-      throw new Error(`extras.dimensions_m.${axis} = ${extras.dimensions_m[axis]}, expected 0.1`);
+    if (extras.pivot_mode !== expect.pivotMode) {
+      throw new Error(`pivot_mode = ${extras.pivot_mode}, expected ${expect.pivotMode}`);
     }
+    if (extras.up_axis !== expect.upAxis) {
+      throw new Error(`up_axis = ${extras.up_axis}, expected ${expect.upAxis}`);
+    }
+    for (let i = 0; i < 3; i++) {
+      if (Math.abs(posMin[i] - expect.posMin[i]) > 1e-5) {
+        throw new Error(`posMin[${i}] = ${posMin[i]}, expected ${expect.posMin[i]}`);
+      }
+      if (Math.abs(posMax[i] - expect.posMax[i]) > 1e-5) {
+        throw new Error(`posMax[${i}] = ${posMax[i]}, expected ${expect.posMax[i]}`);
+      }
+    }
+    reportPass(
+      `${label}: GLB POSITION min=[${posMin.map((v) => v.toFixed(3)).join(', ')}] ` +
+        `max=[${posMax.map((v) => v.toFixed(3)).join(', ')}] m, ` +
+        `pivot_offset_m=[${extras.pivot_offset_m.map((v) => v.toFixed(3)).join(', ')}]`,
+    );
+  } catch (err) {
+    reportFail(label, err);
   }
-
-  reportPass(
-    `100 mm cube: GLB bbox ${size.map((v) => v.toFixed(4)).join(' x ')} m, ` +
-      `extras.dimensions_mm=${JSON.stringify(extras.dimensions_mm)}`,
-  );
-} catch (err) {
-  reportFail('100 mm cube', err);
 }
+
+// Default pivot (base-center). Up axis is Z because we emit a Z-up GLB; the
+// XY are centered and Z min is at 0 so the cube sits on the AR floor.
+await checkCubePivot('100 mm cube / base-center (default)', {}, {
+  pivotMode: 'base-center',
+  upAxis: 'z',
+  posMin: [-0.05, -0.05, 0],
+  posMax: [0.05, 0.05, 0.1],
+});
+
+// Explicit bbox-center: origin at the geometric center.
+await checkCubePivot('100 mm cube / bbox-center', { pivotMode: 'bbox-center' }, {
+  pivotMode: 'bbox-center',
+  upAxis: 'z',
+  posMin: [-0.05, -0.05, -0.05],
+  posMax: [0.05, 0.05, 0.05],
+});
+
+// Original: no translation, just meters scaling. Cube spans 0..0.1 on each
+// axis because the source spans 0..100 mm.
+await checkCubePivot('100 mm cube / original', { pivotMode: 'original' }, {
+  pivotMode: 'original',
+  upAxis: 'z',
+  posMin: [0, 0, 0],
+  posMax: [0.1, 0.1, 0.1],
+});
 
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail === 0 ? 0 : 1);

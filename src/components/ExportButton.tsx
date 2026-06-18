@@ -4,6 +4,7 @@ import { buildUSDZBytes } from '../lib/usdzExporter';
 import { exportRecolored3MF } from '../lib/build3MF';
 import { detectArPlatform, launchQuickLook, launchSceneViewer, type ArPlatform } from '../lib/arLauncher';
 import { useAppStore } from '../store/useAppStore';
+import { PivotControls } from './PivotControls';
 
 type ExportingState = null | 'glb' | '3mf' | 'usdz' | 'ar';
 
@@ -100,7 +101,8 @@ export function ExportButton() {
         : 'View in AR (download GLB)';
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      <PivotControls />
       <button
         onClick={handleExportGLB}
         disabled={busy}
@@ -112,7 +114,7 @@ export function ExportButton() {
         onClick={handleExport3MF}
         disabled={busy || !file}
         className="w-full py-3 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-lg transition-colors text-sm"
-        title="Re-export the source 3MF with the new filament colors. Drops back into OrcaSlicer / U1 with zones intact."
+        title="Re-export the source 3MF with the new filament colors. The export pivot above is for GLB/USDZ only; the 3MF keeps the original print-bed position so it slices unchanged in OrcaSlicer / U1."
       >
         {exporting === '3mf' ? 'Exporting 3MF...' : 'Export as 3MF (re-tint)'}
       </button>

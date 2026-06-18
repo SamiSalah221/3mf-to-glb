@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ParseResult, FilamentSlot, Dimensions } from '../types';
+import type { ParseResult, FilamentSlot, Dimensions, PivotMode } from '../types';
 
 interface AppStore {
   // File state
@@ -27,6 +27,17 @@ interface AppStore {
   // after the unit-to-meters bake). Drives the on-screen W x H x D readout.
   dimensions: Dimensions | null;
 
+  // Bbox center in meters AFTER the pivot bake. The viewer points
+  // OrbitControls at this so rotation always feels centered no matter
+  // which export pivot is chosen.
+  bboxCenterM: [number, number, number] | null;
+
+  // Export pivot mode selected by the user (default 'base-center'). Affects
+  // ONLY the exported GLB / USDZ; the 3MF write-back ignores it.
+  pivotMode: PivotMode;
+  // Custom pivot offset in mm (only used when pivotMode === 'custom').
+  customPivotMm: [number, number, number];
+
   // Actions
   setFile: (f: File) => void;
   setLoading: (loading: boolean) => void;
@@ -37,6 +48,9 @@ interface AppStore {
   setFilamentColor: (index: number, color: string) => void;
   setThinAxis: (axis: 'x' | 'y' | 'z' | null) => void;
   setDimensions: (dim: Dimensions | null) => void;
+  setBboxCenterM: (c: [number, number, number] | null) => void;
+  setPivotMode: (m: PivotMode) => void;
+  setCustomPivotMm: (mm: [number, number, number]) => void;
   resetColors: () => void;
   reset: () => void;
 }
@@ -52,6 +66,9 @@ export const useAppStore = create<AppStore>((set) => ({
   selectedFilamentIndex: null,
   thinAxis: null,
   dimensions: null,
+  bboxCenterM: null,
+  pivotMode: 'base-center',
+  customPivotMm: [0, 0, 0],
 
   setFile: (f) => set({ file: f, error: null }),
 
@@ -83,6 +100,12 @@ export const useAppStore = create<AppStore>((set) => ({
 
   setDimensions: (dim) => set({ dimensions: dim }),
 
+  setBboxCenterM: (c) => set({ bboxCenterM: c }),
+
+  setPivotMode: (m) => set({ pivotMode: m }),
+
+  setCustomPivotMm: (mm) => set({ customPivotMm: mm }),
+
   resetColors: () =>
     set((state) => ({
       filaments: state.filaments.map((f) => ({ ...f, currentColor: f.originalColor })),
@@ -100,5 +123,9 @@ export const useAppStore = create<AppStore>((set) => ({
       selectedFilamentIndex: null,
       thinAxis: null,
       dimensions: null,
+      bboxCenterM: null,
+      // Keep pivotMode + customPivotMm across resets so the user's
+      // preferred pivot survives "New File". They likely want the same
+      // export setting on the next 3MF too.
     }),
 }));

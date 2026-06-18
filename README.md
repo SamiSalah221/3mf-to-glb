@@ -88,6 +88,13 @@ no vendor lock-in.
   exported vertex positions in meters, and surfaced as `asset.extras` on
   the GLB plus a W × H × D readout in the viewport. AR launchers lock the
   model to its true size, so a 100 mm cube shows up as a 10 cm cube.
+- **Configurable export pivot.** Choose where the model origin should sit
+  in the exported GLB/USDZ (base-center for AR floor placement, bbox-center,
+  area-weighted centroid, original 3MF origin, or a custom mm offset). The
+  translation is baked into vertex positions so the file is self-contained;
+  `asset.extras.pivot_mode`, `pivot_offset_m`, and `up_axis` make the choice
+  recoverable downstream. The 3MF write-back path is deliberately exempt:
+  shifting the model on the print bed is not what you want when re-slicing.
 - **Works across the U1 / OrcaSlicer / Bambu family.** Same `paint_color`
   encoding, same plate/object model, no per-vendor branching in the parser.
 - **100% client-side.** Pure static site, no backend, no telemetry. Works

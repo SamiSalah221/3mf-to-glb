@@ -79,6 +79,11 @@ the round-trip CI tests in this repo.
   GLB bounding box is 0.1 m on each axis. Scene Viewer and Quick Look are
   launched with their fixed-scale flags so AR previews show true print
   size, not a pinch-zoomable cartoon.
+- **Configurable export pivot**: base-center for AR floor placement
+  (default), bbox-center, area-weighted centroid, original 3MF origin, or a
+  user-entered mm offset. The choice is baked into vertex positions and
+  also recorded on `asset.extras.pivot_mode` / `pivot_offset_m`. Three
+  pivot-conformance cases are part of the round-trip smoke test.
 
 ### 2. Openness and quality
 

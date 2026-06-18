@@ -53,3 +53,20 @@ export interface ParseResult {
   /** Meters-per-source-unit conversion factor for the parsed file. */
   unitToMeters: number;
 }
+
+/**
+ * Pivot mode for export. The pivot is the point in the model that lands at
+ * the glTF/USDZ origin (0,0,0). AR runtimes place the origin onto the
+ * detected surface and rotate around it, so the pivot controls how the model
+ * sits and spins in AR.
+ *
+ *  - `base-center`: center the two non-up axes and put the up-axis MIN at
+ *    zero. Default and best for AR floor placement.
+ *  - `bbox-center`: geometric center of the axis-aligned bounding box at the
+ *    origin.
+ *  - `centroid`: area-weighted centroid at the origin.
+ *  - `original`: keep the source 3MF origin (no translation beyond the
+ *    unit-to-meters scale).
+ *  - `custom`: arbitrary X/Y/Z translation entered by the user.
+ */
+export type PivotMode = 'base-center' | 'bbox-center' | 'centroid' | 'original' | 'custom';

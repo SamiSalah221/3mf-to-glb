@@ -12,6 +12,10 @@ import { hexToLinearRGBA } from '../lib/colorConvert';
 // continues to frame the model nicely while the inner mesh stays in meters
 // for export.
 const DISPLAY_FRAME = 3;
+// Length of the axis gizmo at the export pivot, as a fraction of the max
+// model dimension in meters. 1/6 lands a clearly visible but not
+// overwhelming gizmo for typical prints.
+const GIZMO_FRACTION = 1 / 6;
 
 export function ColorableModel() {
   const parseResult = useAppStore((s) => s.parseResult);
@@ -21,21 +25,35 @@ export function ColorableModel() {
   const selectFilament = useAppStore((s) => s.selectFilament);
   const setThinAxis = useAppStore((s) => s.setThinAxis);
   const setDimensions = useAppStore((s) => s.setDimensions);
+  const setBboxCenterM = useAppStore((s) => s.setBboxCenterM);
+  const pivotMode = useAppStore((s) => s.pivotMode);
+  const customPivotMm = useAppStore((s) => s.customPivotMm);
+
   const wrapperRef = useRef<THREE.Group>(null);
 
   const currentPlate = parseResult?.plates.find((p) => p.id === currentPlateId);
 
-  // Rebuild the scene only when the plate or unit changes. Filament colors
-  // are applied reactively below so we intentionally exclude `filaments`
-  // from the dependency list.
+  // Rebuild the scene when the plate, unit, OR pivot selection changes.
+  // The pivot bake is part of vertex positions, so it cannot be applied
+  // reactively without rebuilding the BufferGeometry.
   const sceneGroup = useMemo(() => {
     if (!currentPlate || !parseResult) return null;
     return buildSceneFromPlate(currentPlate.meshChunks, filaments, {
       unitToMeters: parseResult.unitToMeters,
       sourceUnit: parseResult.sourceUnit,
+      pivotMode,
+      customPivotMm,
     });
+    // filaments are applied reactively further down; excluding them here is
+    // intentional to avoid rebuilding geometry on every color edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPlate, parseResult?.unitToMeters, parseResult?.sourceUnit]);
+  }, [
+    currentPlate,
+    parseResult?.unitToMeters,
+    parseResult?.sourceUnit,
+    pivotMode,
+    customPivotMm,
+  ]);
 
   const displayScale = useMemo(() => {
     if (!sceneGroup) return 1;
@@ -46,20 +64,31 @@ export function ColorableModel() {
     return maxDim > 0 ? DISPLAY_FRAME / maxDim : 1;
   }, [sceneGroup]);
 
-  // Publish the thin-axis hint and physical dimensions to the store on
-  // every scene rebuild.
+  const gizmoSize = useMemo(() => {
+    if (!sceneGroup) return 0;
+    const m = (sceneGroup.userData as Partial<BuiltSceneUserData>).dimensions?.m;
+    if (!m) return 0;
+    return Math.max(m.x, m.y, m.z) * GIZMO_FRACTION;
+  }, [sceneGroup]);
+
+  // Publish thin-axis, dimensions, and bbox center to the store on each
+  // scene rebuild. The bbox center is used by ViewerCanvas to keep
+  // OrbitControls feeling centered around the model body, regardless of
+  // which export pivot the user picked.
   useEffect(() => {
     if (!sceneGroup) {
       setThinAxis(null);
       setDimensions(null);
+      setBboxCenterM(null);
       return;
     }
     const ud = sceneGroup.userData as Partial<BuiltSceneUserData>;
     setThinAxis(ud.thinAxis ?? null);
     setDimensions(ud.dimensions ?? null);
-  }, [sceneGroup, setThinAxis, setDimensions]);
+    setBboxCenterM(ud.bboxCenterM ?? null);
+  }, [sceneGroup, setThinAxis, setDimensions, setBboxCenterM]);
 
-  // Update material colors reactively (no geometry rebuild).
+  // Reactive recolor (no geometry rebuild).
   useEffect(() => {
     if (!sceneGroup) return;
     const filamentMap = new Map(filaments.map((f) => [f.index, f.currentColor]));
@@ -72,7 +101,6 @@ export function ColorableModel() {
     });
   }, [filaments, sceneGroup]);
 
-  // Update selection highlight.
   useEffect(() => {
     if (!sceneGroup) return;
     sceneGroup.traverse((child) => {
@@ -84,9 +112,8 @@ export function ColorableModel() {
     });
   }, [selectedFilamentIndex, sceneGroup]);
 
-  // Register the INNER (meters-baked, identity-transform) scene for export.
-  // The wrapper group only carries display scale; we don't want that scale
-  // smuggled into the GLB.
+  // Register the inner meters-baked scene for export. The wrapper carries
+  // only the cosmetic displayScale and must NOT leak into the GLB.
   useEffect(() => {
     if (sceneGroup) setExportScene(sceneGroup);
   }, [sceneGroup]);
@@ -136,6 +163,10 @@ export function ColorableModel() {
       onPointerOut={handlePointerOut}
     >
       <primitive object={sceneGroup} />
+      {/* Gizmo at the export pivot (local origin of the scene group). The
+          wrapper's scale applies, so the gizmo grows / shrinks with the
+          model and remains visually proportional. */}
+      {gizmoSize > 0 && <axesHelper args={[gizmoSize]} />}
     </group>
   );
 }
