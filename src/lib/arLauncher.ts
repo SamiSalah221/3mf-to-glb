@@ -11,7 +11,7 @@
 //   the GLB and let the user open it in a viewer of their choice.
 
 import type { ModelViewerElement } from '@google/model-viewer';
-import { triggerBrowserDownload } from './glbExporter';
+import { triggerBrowserDownload } from './glbExporter.js';
 
 export type ArPlatform = 'ios' | 'android' | 'desktop';
 
