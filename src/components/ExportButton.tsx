@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { exportGLB, triggerBrowserDownload, buildGLBBytes, getExportScene } from '../lib/glbExporter';
 import { buildUSDZBytes } from '../lib/usdzExporter';
 import { exportRecolored3MF } from '../lib/build3MF';
-import { detectArPlatform, launchQuickLook, launchSceneViewer, type ArPlatform } from '../lib/arLauncher';
+import { detectArPlatform, launchQuickLook, launchWebXR, type ArPlatform } from '../lib/arLauncher';
 import { useAppStore } from '../store/useAppStore';
 import { PivotControls } from './PivotControls';
 import { RotationControls } from './RotationControls';
@@ -74,7 +74,7 @@ export function ExportButton() {
         launchQuickLook(bytes, `${baseName}.usdz`);
       } else if (arPlatform === 'android') {
         const bytes = await buildGLBBytes(scene);
-        launchSceneViewer(bytes, `${baseName}.glb`, baseName);
+        await launchWebXR(bytes, `${baseName}.glb`);
       } else {
         // Desktop fallback: download the GLB and let the user load it in a
         // viewer of choice. The button label already advertises this.
@@ -98,7 +98,7 @@ export function ExportButton() {
     arPlatform === 'ios'
       ? 'View in AR (iOS Quick Look)'
       : arPlatform === 'android'
-        ? 'View in AR (Scene Viewer)'
+        ? 'View in AR (Android WebXR)'
         : 'View in AR (download GLB)';
 
   return (

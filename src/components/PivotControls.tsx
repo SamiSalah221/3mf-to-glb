@@ -34,7 +34,7 @@ export function PivotControls() {
           id="pivot-mode"
           value={pivotMode}
           onChange={(e) => setPivotMode(e.target.value as PivotMode)}
-          className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+          className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-2 text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-400"
         >
           {PIVOT_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -55,7 +55,7 @@ export function PivotControls() {
                 step="1"
                 value={customPivotMm[i]}
                 onChange={(e) => setAxis(i as 0 | 1 | 2, e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                className="bg-slate-800 border border-slate-700 rounded px-2 py-2 text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-400"
               />
             </label>
           ))}

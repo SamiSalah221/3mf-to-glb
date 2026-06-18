@@ -88,7 +88,7 @@ export function RotationControls() {
               <button
                 type="button"
                 onClick={() => handleSnap(axis, -90)}
-                className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200 font-mono"
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200 font-mono"
                 title={`Rotate -90° about world ${axis.toUpperCase()}.`}
               >
                 -90
@@ -96,7 +96,7 @@ export function RotationControls() {
               <button
                 type="button"
                 onClick={() => handleSnap(axis, 90)}
-                className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200 font-mono"
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200 font-mono"
                 title={`Rotate +90° about world ${axis.toUpperCase()}.`}
               >
                 +90
@@ -117,7 +117,7 @@ export function RotationControls() {
               step="1"
               value={Number(eulerDeg[i].toFixed(2))}
               onChange={(e) => handleEulerEdit(axis, e.target.value)}
-              className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              className="bg-slate-800 border border-slate-700 rounded px-2 py-2 text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-400"
             />
           </label>
         ))}
@@ -126,7 +126,7 @@ export function RotationControls() {
       <button
         type="button"
         onClick={() => setPivotMode('base-center')}
-        className="w-full py-1.5 mt-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200"
+        className="w-full py-2.5 mt-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200"
         title="Re-run the base-center pivot so the lowest point of the rotated bbox sits on the AR floor."
       >
         Lay flat on floor
