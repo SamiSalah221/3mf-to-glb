@@ -95,6 +95,14 @@ no vendor lock-in.
   `asset.extras.pivot_mode`, `pivot_offset_m`, and `up_axis` make the choice
   recoverable downstream. The 3MF write-back path is deliberately exempt:
   shifting the model on the print bed is not what you want when re-slicing.
+- **Export-time reorientation.** Rotate the model before export with
+  world-axis ±90° snaps or numeric XYZ degrees, then "lay flat on floor" to
+  re-rest it on the AR ground plane. The rotation is baked into the GLB/USDZ
+  vertex positions and normals, and the pivot is recomputed from the rotated
+  bounding box, so a Z-up print ships as a correctly-standing, floor-anchored
+  AR model. The orientation is recorded as `asset.extras.applied_rotation_euler_deg`
+  and `applied_rotation_quat`; the 3MF write-back is left unrotated so it
+  re-slices in its original print-bed layout.
 - **Works across the U1 / OrcaSlicer / Bambu family.** Same `paint_color`
   encoding, same plate/object model, no per-vendor branching in the parser.
 - **100% client-side.** Pure static site, no backend, no telemetry. Works
@@ -146,6 +154,9 @@ npx 3mf-to-glb model.3mf -o recolored.glb --recolor "1=#cc0000,2=#000000"
 
 # Pick a specific plate from a multi-plate file:
 npx 3mf-to-glb model.3mf --plate 2 -o plate2.glb
+
+# Reorient a Z-up print to glTF Y-up while exporting:
+npx 3mf-to-glb model.3mf --rotation "90,0,0" -o yup.glb
 ```
 
 Flags:
@@ -155,6 +166,8 @@ Flags:
 | `-o, --output <file>` | Output GLB path. Defaults to the input name with `.glb`. |
 | `--plate <id>` | 1-based plate id (matches Bambu / Orca / U1 `plater_id`). Defaults to the first plate. |
 | `--recolor <map>` | Comma-separated `index=hex` pairs applied before export. Hex may include or omit the leading `#`. |
+| `--pivot <mode>` | Export pivot: `base-center` (default), `bbox-center`, `centroid`, `original`, `custom`. |
+| `--rotation <x,y,z>` | XYZ Euler rotation in degrees, baked into geometry before the pivot. Try `"90,0,0"` to reorient a Z-up source to glTF Y-up. |
 | `-h, --help` | Show full help. |
 
 ## Use it from your own code (library)
@@ -273,6 +286,11 @@ Already shipped:
   source 3MF unit is baked into the exported vertex positions in meters,
   Scene Viewer is launched with `resizable=false`, and Quick Look with
   `allowsContentScaling=0`.
+- Configurable export pivot and export-time reorientation: choose where the
+  model origin sits (base-center, bbox-center, centroid, original, or a custom
+  mm offset) and rotate with world-axis ±90° snaps or numeric XYZ degrees. Both
+  bake into the GLB/USDZ vertex positions, are recorded in `asset.extras`, and
+  are exposed on the CLI as `--pivot` and `--rotation`.
 - One-click "Try with U1 sample" entry point on the live demo and a curated
   set of multi-color 3MF fixtures in [`samples/`](./samples).
 - CI (lint, web build, library build, CLI smoke, four-sample round-trip) on

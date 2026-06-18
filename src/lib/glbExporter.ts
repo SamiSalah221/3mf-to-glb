@@ -18,6 +18,13 @@ export interface GLBAssetExtras {
   up_axis: 'y' | 'z';
   pivot_mode: string;
   pivot_offset_m: [number, number, number];
+  /**
+   * User-applied rotation that was baked into vertex positions + normals.
+   * Identity ([0,0,0] / [0,0,0,1]) when no rotation was applied. Recorded
+   * so downstream tools can recover the orientation.
+   */
+  applied_rotation_euler_deg: [number, number, number];
+  applied_rotation_quat: [number, number, number, number];
   generator: string;
 }
 
@@ -58,6 +65,8 @@ export async function buildGLBBytes(scene: THREE.Object3D): Promise<Uint8Array> 
       up_axis: sceneUd.upAxis,
       pivot_mode: sceneUd.pivotMode,
       pivot_offset_m: sceneUd.pivotOffsetM,
+      applied_rotation_euler_deg: sceneUd.appliedRotationEulerDeg ?? [0, 0, 0],
+      applied_rotation_quat: sceneUd.appliedRotationQuat ?? [0, 0, 0, 1],
       generator: '3mf-to-glb',
     };
     // GLTFExporter exposes writer.json internally but the public type omits

@@ -5,6 +5,7 @@ import { exportRecolored3MF } from '../lib/build3MF';
 import { detectArPlatform, launchQuickLook, launchSceneViewer, type ArPlatform } from '../lib/arLauncher';
 import { useAppStore } from '../store/useAppStore';
 import { PivotControls } from './PivotControls';
+import { RotationControls } from './RotationControls';
 
 type ExportingState = null | 'glb' | '3mf' | 'usdz' | 'ar';
 
@@ -102,6 +103,7 @@ export function ExportButton() {
 
   return (
     <div className="space-y-3">
+      <RotationControls />
       <PivotControls />
       <button
         onClick={handleExportGLB}

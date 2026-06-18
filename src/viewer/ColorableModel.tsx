@@ -28,13 +28,14 @@ export function ColorableModel() {
   const setBboxCenterM = useAppStore((s) => s.setBboxCenterM);
   const pivotMode = useAppStore((s) => s.pivotMode);
   const customPivotMm = useAppStore((s) => s.customPivotMm);
+  const rotationQuat = useAppStore((s) => s.rotationQuat);
 
   const wrapperRef = useRef<THREE.Group>(null);
 
   const currentPlate = parseResult?.plates.find((p) => p.id === currentPlateId);
 
-  // Rebuild the scene when the plate, unit, OR pivot selection changes.
-  // The pivot bake is part of vertex positions, so it cannot be applied
+  // Rebuild the scene when the plate, unit, pivot, OR rotation changes.
+  // All four bake into vertex positions, so they cannot be applied
   // reactively without rebuilding the BufferGeometry.
   const sceneGroup = useMemo(() => {
     if (!currentPlate || !parseResult) return null;
@@ -43,6 +44,7 @@ export function ColorableModel() {
       sourceUnit: parseResult.sourceUnit,
       pivotMode,
       customPivotMm,
+      rotationQuat,
     });
     // filaments are applied reactively further down; excluding them here is
     // intentional to avoid rebuilding geometry on every color edit.
@@ -53,6 +55,7 @@ export function ColorableModel() {
     parseResult?.sourceUnit,
     pivotMode,
     customPivotMm,
+    rotationQuat,
   ]);
 
   const displayScale = useMemo(() => {
