@@ -32,9 +32,11 @@ export type {
   ParseResult,
   Dimensions,
   SourceUnit,
+  PivotMode,
 } from '../types/index.js';
 export { UNIT_TO_METERS } from '../types/index.js';
 export type { BuildSceneOptions, BuiltSceneUserData } from './glbBuilder.js';
+export { EXPORT_UP_AXIS } from './glbBuilder.js';
 export type { GLBAssetExtras } from './glbExporter.js';
 
 import { parse3MF } from './parse3MF.js';
@@ -48,6 +50,10 @@ export interface ConvertToGLBOptions {
   plateId?: number;
   /** Optional filament-index → hex recolor map applied before export. */
   recolor?: FilamentRecolorMap;
+  /** Export pivot mode. Defaults to 'base-center'. */
+  pivotMode?: import('./glbBuilder.js').BuildSceneOptions['pivotMode'];
+  /** Custom pivot offset in millimeters (only used when pivotMode='custom'). */
+  customPivotMm?: import('./glbBuilder.js').BuildSceneOptions['customPivotMm'];
 }
 
 /**
@@ -72,6 +78,8 @@ export async function convertToGLB(
   const scene = buildSceneFromPlate(plate.meshChunks, parsed.filaments, {
     unitToMeters: parsed.unitToMeters,
     sourceUnit: parsed.sourceUnit,
+    pivotMode: opts.pivotMode,
+    customPivotMm: opts.customPivotMm,
   });
   return buildGLBBytes(scene);
 }

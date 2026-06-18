@@ -15,6 +15,9 @@ export interface GLBAssetExtras {
   dimensions_m: { x: number; y: number; z: number };
   bbox_min_m: [number, number, number];
   bbox_max_m: [number, number, number];
+  up_axis: 'y' | 'z';
+  pivot_mode: string;
+  pivot_offset_m: [number, number, number];
   generator: string;
 }
 
@@ -45,13 +48,16 @@ export async function buildGLBBytes(scene: THREE.Object3D): Promise<Uint8Array> 
     sceneUd.dimensions.bboxMinM &&
     sceneUd.dimensions.bboxMaxM;
 
-  if (hasDimensions && sceneUd.sourceUnit) {
+  if (hasDimensions && sceneUd.sourceUnit && sceneUd.upAxis && sceneUd.pivotMode && sceneUd.pivotOffsetM) {
     const extras: GLBAssetExtras = {
       source_unit: sceneUd.sourceUnit,
       dimensions_mm: sceneUd.dimensions!.mm,
       dimensions_m: sceneUd.dimensions!.m,
       bbox_min_m: sceneUd.dimensions!.bboxMinM,
       bbox_max_m: sceneUd.dimensions!.bboxMaxM,
+      up_axis: sceneUd.upAxis,
+      pivot_mode: sceneUd.pivotMode,
+      pivot_offset_m: sceneUd.pivotOffsetM,
       generator: '3mf-to-glb',
     };
     // GLTFExporter exposes writer.json internally but the public type omits
