@@ -3,10 +3,15 @@
 // iOS Safari: an <a rel="ar" href="model.usdz"><img></a> click is the
 //   officially supported way to drop into AR Quick Look. The <img> child is
 //   required by WebKit — without it, Safari falls back to a plain download.
-// Android Chrome: the Scene Viewer intent URL deep-links into the system AR
-//   viewer with a GLB.
+// Android Chrome: we use <model-viewer> with ar-modes="webxr" to launch an
+//   in-page WebXR session. Scene Viewer (the old path) requires a publicly
+//   fetchable URL and cannot load blob: URLs produced by a pure-client-side
+//   app; model-viewer renders from in-memory bytes, which fixes the crash.
 // Desktop / unknown: there is no first-party AR runtime, so we just download
 //   the GLB and let the user open it in a viewer of their choice.
+
+import type { ModelViewerElement } from '@google/model-viewer';
+import { triggerBrowserDownload } from './glbExporter';
 
 export type ArPlatform = 'ios' | 'android' | 'desktop';
 
@@ -46,28 +51,50 @@ export function launchQuickLook(usdzBytes: Uint8Array, filename: string): void {
   }, 2000);
 }
 
-export function launchSceneViewer(glbBytes: Uint8Array, filename: string, title: string): void {
-  // Scene Viewer wants a publicly fetchable URL; a blob URL works within the
-  // same browser session because the OS intent piggybacks on Chrome.
+export async function launchWebXR(glbBytes: Uint8Array, filename: string): Promise<void> {
+  // Register the <model-viewer> custom element (side-effect import).
+  await import('@google/model-viewer');
+
   const blob = new Blob([new Uint8Array(glbBytes)], { type: 'model/gltf-binary' });
   const url = URL.createObjectURL(blob);
 
-  // resizable=false locks the model to its encoded size in Scene Viewer.
-  // The GLB has already been baked into meters, so the encoded size matches
-  // the real print and the user shouldn't be able to pinch-zoom it.
-  const intent =
-    `intent://arvr.google.com/scene-viewer/1.0?file=${encodeURIComponent(url)}` +
-    `&mode=ar_preferred&resizable=false&title=${encodeURIComponent(title)}` +
-    `#Intent;scheme=https;package=com.google.ar.core;` +
-    `S.browser_fallback_url=${encodeURIComponent(url)};end;`;
+  const modelViewer = document.createElement('model-viewer') as unknown as ModelViewerElement;
+  modelViewer.setAttribute('src', url);
+  modelViewer.setAttribute('ar', '');
+  modelViewer.setAttribute('ar-modes', 'webxr');
+  modelViewer.setAttribute('ar-scale', 'fixed');
+  // Visually hidden — we only need it for the WebXR session, not to display.
+  modelViewer.style.cssText =
+    'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+  document.body.appendChild(modelViewer);
 
-  const a = document.createElement('a');
-  a.href = intent;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
+  const cleanup = () => {
+    if (modelViewer.parentNode) modelViewer.parentNode.removeChild(modelViewer);
     URL.revokeObjectURL(url);
-  }, 2000);
+  };
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      modelViewer.addEventListener('load', () => resolve(), { once: true });
+      modelViewer.addEventListener('error', (e) => reject(e), { once: true });
+      setTimeout(() => reject(new Error('model-viewer load timeout')), 15000);
+    });
+
+    if (!modelViewer.canActivateAR) {
+      cleanup();
+      triggerBrowserDownload(glbBytes, filename, 'model/gltf-binary');
+      window.alert(
+        'WebXR AR is not available on this device. The GLB has been downloaded — ' +
+          'open it in a viewer like model-viewer or Blender.',
+      );
+      return;
+    }
+
+    await modelViewer.activateAR();
+    // Keep the element alive while the AR session is running.
+    setTimeout(cleanup, 10000);
+  } catch (err) {
+    cleanup();
+    throw err;
+  }
 }

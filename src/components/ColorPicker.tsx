@@ -60,7 +60,7 @@ export function ColorPickerPanel() {
 
       <div className="flex gap-2 items-center">
         <div
-          className="w-8 h-8 rounded border border-slate-600 flex-shrink-0"
+          className="w-10 h-10 rounded border border-slate-600 flex-shrink-0"
           style={{ backgroundColor: filament.currentColor }}
         />
         <input

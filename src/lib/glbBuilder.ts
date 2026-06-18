@@ -18,7 +18,7 @@ import { hexToLinearRGBA } from './colorConvert.js';
  * relative to this value so swapping the up axis later only requires
  * updating this constant.
  */
-export const EXPORT_UP_AXIS: 'y' | 'z' = 'z';
+export const EXPORT_UP_AXIS: 'y' | 'z' = 'y';
 
 export interface BuildSceneOptions {
   /**
@@ -117,14 +117,22 @@ export function buildSceneFromPlate(
   const customPivotMm = options.customPivotMm ?? [0, 0, 0];
   const rotationInput = options.rotationQuat ?? IDENTITY_QUAT;
 
-  // Normalize the quaternion once. Accumulated snap rotations can drift; a
-  // non-unit quaternion silently scales the geometry.
-  const quat = new THREE.Quaternion(
+  // Normalize the user quaternion once. Accumulated snap rotations can drift;
+  // a non-unit quaternion silently scales the geometry.
+  const userQuat = new THREE.Quaternion(
     rotationInput[0],
     rotationInput[1],
     rotationInput[2],
     rotationInput[3],
   ).normalize();
+
+  // When exporting Y-up, prepend a Z-up→Y-up frame change (−90° about X,
+  // maps 3MF +Z → glTF +Y). The user's rotation is applied first (in the
+  // source Z-up frame), then the frame change follows: finalQuat = zToY * userQuat.
+  const quat =
+    EXPORT_UP_AXIS === 'y'
+      ? new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2).multiply(userQuat).normalize()
+      : userQuat;
   const hasRotation = !isIdentityQuat([quat.x, quat.y, quat.z, quat.w]);
 
   const group = new THREE.Group();

@@ -81,7 +81,7 @@ export function PlateSelector() {
               aria-label={`Select filament ${filament.index}`}
             >
               <div
-                className="w-8 h-8 rounded-full border-2 border-slate-500 flex-shrink-0 shadow-inner"
+                className="w-11 h-11 rounded-full border-2 border-slate-500 flex-shrink-0 shadow-inner"
                 style={{ backgroundColor: filament.currentColor }}
               />
               <div className="min-w-0 flex-1">
