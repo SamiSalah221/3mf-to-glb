@@ -87,6 +87,30 @@ export interface BuiltSceneUserData {
 }
 
 /**
+ * Reorient the geometry inside an already-cloned export scene from the native
+ * Z-up frame (3MF / print bed convention) to the Y-up frame required by
+ * glTF, USDZ, and all AR runtimes (iOS Quick Look, Android Scene Viewer,
+ * model-viewer / WebXR).
+ *
+ * Call this on the `scene.clone(true)` BEFORE serialising — never on the live
+ * preview group. The function clones each mesh's BufferGeometry so that
+ * `applyMatrix4` and the export's `finally` disposal cannot touch the shared
+ * live-preview buffers.
+ *
+ * Rotation applied: −90° about X  →  (x, y, z) → (x, z, −y)
+ * This maps the print-bed Z+ axis onto the glTF Y+ ("up") axis.
+ */
+export function reorientCloneToYUp(clone: THREE.Object3D): void {
+  const m = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+  clone.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.geometry = child.geometry.clone();
+      child.geometry.applyMatrix4(m);
+    }
+  });
+}
+
+/**
  * Build a viewer/export scene from a plate's mesh chunks.
  *
  * Positions are baked into meters (vertex coordinates × `unitToMeters`) and
