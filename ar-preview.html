@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AR Preview — model-viewer</title>
+  <style>
+    body { margin: 0; background: #1a1a2e; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; color: #eee; }
+    h1 { margin: 12px 0 4px; font-size: 1rem; }
+    #status { font-size: 0.8rem; color: #aaa; margin-bottom: 8px; }
+    model-viewer {
+      width: 600px;
+      height: 500px;
+      background-color: #2a2a3e;
+      border: 1px solid #444;
+    }
+    #info { margin-top: 8px; font-size: 0.75rem; color: #ccc; max-width: 600px; word-break: break-all; }
+  </style>
+  <!-- model-viewer handles iOS Quick Look + Android Scene Viewer + WebXR -->
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+</head>
+<body>
+  <h1>AR Preview — model-viewer (desktop proxy for Quick Look / Scene Viewer)</h1>
+  <div id="status">Loading…</div>
+
+  <!-- src is set by query string or Playwright evaluate() call -->
+  <model-viewer
+    id="mv"
+    camera-controls
+    shadow-intensity="1"
+    alt="3MF export AR preview"
+  ></model-viewer>
+
+  <div id="info"></div>
+
+  <script>
+    const mv = document.getElementById('mv');
+    const status = document.getElementById('status');
+    const info = document.getElementById('info');
+
+    // Allow: ?src=path/to/file.glb  OR  Playwright sets mv.src directly
+    const params = new URLSearchParams(location.search);
+    const src = params.get('src');
+    if (src) mv.src = src;
+
+    mv.addEventListener('load', () => {
+      status.textContent = 'Loaded ✓  (model-viewer Y-up interpretation — same as Quick Look / Scene Viewer)';
+      try {
+        const bb = mv.getBoundingBoxCenter();
+        const sz = mv.getDimensions();
+        info.textContent =
+          `src: ${mv.src}\n` +
+          `center: (${bb.x.toFixed(3)}, ${bb.y.toFixed(3)}, ${bb.z.toFixed(3)})\n` +
+          `size:   (${sz.x.toFixed(3)} × ${sz.y.toFixed(3)} × ${sz.z.toFixed(3)}) m`;
+      } catch (_) { /* older model-viewer versions may not expose getDimensions */ }
+    });
+
+    mv.addEventListener('error', (e) => {
+      status.textContent = `Error: ${e.detail?.message ?? e}`;
+    });
+  </script>
+</body>
+</html>

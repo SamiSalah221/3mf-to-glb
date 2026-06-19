@@ -135,30 +135,30 @@ async function checkCubePivot(label, opts, expect) {
   }
 }
 
-// Default pivot (base-center). Up axis is Z because we emit a Z-up GLB; the
-// XY are centered and Z min is at 0 so the cube sits on the AR floor.
+// Default pivot (base-center). Export is now Y-up (−90°X baked at export time).
+// X stays, new Y = old Z (height), new Z = −old Y. Model rests at Y=0.
 await checkCubePivot('100 mm cube / base-center (default)', {}, {
   pivotMode: 'base-center',
-  upAxis: 'z',
-  posMin: [-0.05, -0.05, 0],
-  posMax: [0.05, 0.05, 0.1],
+  upAxis: 'y',
+  posMin: [-0.05, 0, -0.05],
+  posMax: [0.05, 0.1, 0.05],
 });
 
-// Explicit bbox-center: origin at the geometric center.
+// Explicit bbox-center: a symmetric cube is unchanged by the Y-up rotation.
 await checkCubePivot('100 mm cube / bbox-center', { pivotMode: 'bbox-center' }, {
   pivotMode: 'bbox-center',
-  upAxis: 'z',
+  upAxis: 'y',
   posMin: [-0.05, -0.05, -0.05],
   posMax: [0.05, 0.05, 0.05],
 });
 
-// Original: no translation, just meters scaling. Cube spans 0..0.1 on each
-// axis because the source spans 0..100 mm.
+// Original: no translation, just meters scaling. After −90°X: new Y = old Z,
+// new Z = −old Y → the cube spans [0..0.1, 0..0.1, −0.1..0].
 await checkCubePivot('100 mm cube / original', { pivotMode: 'original' }, {
   pivotMode: 'original',
-  upAxis: 'z',
-  posMin: [0, 0, 0],
-  posMax: [0.1, 0.1, 0.1],
+  upAxis: 'y',
+  posMin: [0, 0, -0.1],
+  posMax: [0.1, 0.1, 0],
 });
 
 // ---------------------------------------------------------------------------
@@ -216,23 +216,25 @@ async function checkRotationCase(label, opts, expect) {
   }
 }
 
-// Identity rotation: the flat plate sits centered on X/Y with the 10 mm
-// thickness rising from Z=0. extras carry [0,0,0] / [0,0,0,1].
+// Identity rotation: flat plate (100×100×10 mm). Export is now Y-up (−90°X).
+// After −90°X: new Y = old Z (height 10 mm), new Z = −old Y. Model rests at Y=0.
+// extras carry [0,0,0] / [0,0,0,1] (user applied no rotation).
 await checkRotationCase('flat plate / no rotation (base-center)', {}, {
-  posMin: [-0.05, -0.05, 0],
-  posMax: [0.05, 0.05, 0.01],
+  posMin: [-0.05, 0, -0.05],
+  posMax: [0.05, 0.01, 0.05],
   eulerDeg: [0, 0, 0],
   quat: [0, 0, 0, 1],
 });
 
-// +90° about X swaps Y and Z (with sign). The thin 10 mm axis becomes the
-// new Y extent; the previously-horizontal 100 mm Y axis becomes the new
-// Z (up-axis) extent. base-center then re-rests the new bbox min Z at 0.
+// +90°X user rotation in Z-up app: old thin Z axis (10 mm) → new Y; old 100 mm
+// Y axis → new Z. base-center rests new bbox Z-min at 0 (Z-up stage). Then the
+// Y-up export bake (−90°X) is applied on top. Net: height (100 mm Y in app →
+// old-export Z) now lands on Y. Thin (10 mm) goes to Z.
 await checkRotationCase('flat plate / +90 X (Y becomes up)', {
   rotationEulerDeg: [90, 0, 0],
 }, {
-  posMin: [-0.05, -0.005, 0],
-  posMax: [0.05, 0.005, 0.1],
+  posMin: [-0.05, 0, -0.005],
+  posMax: [0.05, 0.1, 0.005],
   eulerDeg: [90, 0, 0],
 });
 
@@ -248,8 +250,8 @@ const fourSnaps = composeSnaps([
 await checkRotationCase('flat plate / 4 x +90 X composes to identity', {
   rotationQuat: fourSnaps,
 }, {
-  posMin: [-0.05, -0.05, 0],
-  posMax: [0.05, 0.05, 0.01],
+  posMin: [-0.05, 0, -0.05],
+  posMax: [0.05, 0.01, 0.05],
 });
 
 console.log(`\n${pass}/${pass + fail} passed`);

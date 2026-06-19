@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { USDZExporter } from 'three/addons/exporters/USDZExporter.js';
+import { reorientCloneToYUp } from './glbBuilder.js';
 
 /**
  * Build a USDZ archive from a THREE scene/group.
@@ -14,6 +15,11 @@ import { USDZExporter } from 'three/addons/exporters/USDZExporter.js';
 export async function buildUSDZBytes(scene: THREE.Object3D): Promise<Uint8Array> {
   const exporter = new USDZExporter();
   const exportScene = scene.clone(true);
+
+  // Convert Z-up (3MF/print-bed frame) → Y-up (glTF/USDZ/AR frame) on the
+  // clone only. The live preview group is never touched.
+  reorientCloneToYUp(exportScene);
+
   try {
     // quickLookCompatible: enables flags Quick Look needs to render PBR
     // materials with the matte-PLA look the rest of the pipeline produces.
