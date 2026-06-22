@@ -4,10 +4,9 @@ import { buildUSDZBytes } from '../lib/usdzExporter';
 import { exportRecolored3MF } from '../lib/build3MF';
 import { detectArPlatform, launchQuickLook, launchWebXR, type ArPlatform } from '../lib/arLauncher';
 import { useAppStore } from '../store/useAppStore';
-import { PivotControls } from './PivotControls';
 import { RotationControls } from './RotationControls';
 
-type ExportingState = null | 'glb' | '3mf' | 'usdz' | 'ar';
+type ExportingState = null | 'glb' | '3mf' | 'ar';
 
 export function ExportButton() {
   const [exporting, setExporting] = useState<ExportingState>(null);
@@ -44,21 +43,6 @@ export function ExportButton() {
     } catch (err) {
       console.error('3MF export failed:', err);
       window.alert('3MF export failed. See console for details.');
-    } finally {
-      setExporting(null);
-    }
-  };
-
-  const handleExportUSDZ = async () => {
-    const scene = getExportScene();
-    if (!scene) return;
-    setExporting('usdz');
-    try {
-      const bytes = await buildUSDZBytes(scene);
-      triggerBrowserDownload(bytes, `${baseName}.usdz`, 'model/vnd.usdz+zip');
-    } catch (err) {
-      console.error('USDZ export failed:', err);
-      window.alert('USDZ export failed. See console for details.');
     } finally {
       setExporting(null);
     }
@@ -104,7 +88,13 @@ export function ExportButton() {
   return (
     <div className="space-y-3">
       <RotationControls />
-      <PivotControls />
+      <button
+        onClick={handleViewInAR}
+        disabled={busy}
+        className="w-full py-4 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-lg transition-colors text-base"
+      >
+        {exporting === 'ar' ? 'Launching AR...' : arLabel}
+      </button>
       <button
         onClick={handleExportGLB}
         disabled={busy}
@@ -118,22 +108,7 @@ export function ExportButton() {
         className="w-full py-3 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-lg transition-colors text-sm"
         title="Re-export the source 3MF with the new filament colors. The export pivot above is for GLB/USDZ only; the 3MF keeps the original print-bed position so it slices unchanged in OrcaSlicer / U1."
       >
-        {exporting === '3mf' ? 'Exporting 3MF...' : 'Export as 3MF (re-tint)'}
-      </button>
-      <button
-        onClick={handleExportUSDZ}
-        disabled={busy}
-        className="w-full py-3 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-lg transition-colors text-sm"
-        title="USDZ is the format Apple Quick Look needs for in-page AR previews on iOS."
-      >
-        {exporting === 'usdz' ? 'Exporting USDZ...' : 'Export as USDZ'}
-      </button>
-      <button
-        onClick={handleViewInAR}
-        disabled={busy}
-        className="w-full py-3 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-lg transition-colors text-sm"
-      >
-        {exporting === 'ar' ? 'Launching AR...' : arLabel}
+        {exporting === '3mf' ? 'Exporting 3MF...' : 'Export 3MF (keeps colors, still sliceable)'}
       </button>
     </div>
   );

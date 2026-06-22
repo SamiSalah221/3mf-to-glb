@@ -46,7 +46,6 @@ export function RotationControls() {
   const rotationQuat = useAppStore((s) => s.rotationQuat);
   const setRotationQuat = useAppStore((s) => s.setRotationQuat);
   const resetRotation = useAppStore((s) => s.resetRotation);
-  const setPivotMode = useAppStore((s) => s.setPivotMode);
 
   // Re-derive the readout whenever the source-of-truth quaternion changes.
   const eulerDeg = useMemo(() => quatToEulerDeg(rotationQuat), [rotationQuat]);
@@ -123,14 +122,6 @@ export function RotationControls() {
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={() => setPivotMode('base-center')}
-        className="w-full py-2.5 mt-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200"
-        title="Re-run the base-center pivot so the lowest point of the rotated bbox sits on the AR floor."
-      >
-        Lay flat on floor
-      </button>
     </div>
   );
 }

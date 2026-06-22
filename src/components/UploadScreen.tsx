@@ -6,7 +6,7 @@ import { parse3MF } from '../lib/parse3MF';
 // next to index.html. Lets the demo offer a sample without any upload.
 import u1SampleUrl from '../../samples/watchful-owl.3mf?url';
 
-const U1_SAMPLE_NAME = 'watchful-owl-u1-sample.3mf';
+const U1_SAMPLE_NAME = 'sample.3mf';
 
 export function UploadScreen() {
   const { setFile, setLoading, setError, setParsed } = useAppStore();
@@ -43,7 +43,7 @@ export function UploadScreen() {
       const file = new File([new Uint8Array(bytes)], U1_SAMPLE_NAME, { type: 'model/3mf' });
       await loadBuffer(file);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load U1 sample');
+      setError(err instanceof Error ? err.message : 'Could not load sample file');
     }
   }, [loadBuffer, setLoading, setError]);
 
@@ -73,7 +73,7 @@ export function UploadScreen() {
               : 'Drop your .3mf file here or click to browse'}
           </p>
           <p className="text-slate-500 text-sm">
-            Snapmaker U1, OrcaSlicer, and Bambu Studio multi-color 3MFs supported
+            Bambu Studio, OrcaSlicer, and Snapmaker U1 multi-color 3MFs supported
           </p>
         </div>
 
@@ -82,7 +82,7 @@ export function UploadScreen() {
           onClick={onTrySample}
           className="text-sm text-emerald-300 hover:text-emerald-200 underline underline-offset-4 transition-colors"
         >
-          Try with a Snapmaker U1 / OrcaSlicer sample (no upload)
+          Try with a sample file (no upload)
         </button>
       </div>
     </div>

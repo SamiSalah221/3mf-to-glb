@@ -15,14 +15,13 @@
 
 ## What it is
 
-The Snapmaker U1 puts some of the most interesting color authoring tools on
-any consumer printer in front of makers right now (Full Spectrum gradients,
-Surface Color Stitch image projection, plus the OrcaSlicer-derived MMU-style
-painter). The problem is that once a multi-color print is sliced, the color
-information is effectively trapped inside the slicer file. You can't preview
-the recolored print on a product page, you can't ship it to a Blender artist,
-you can't share it on a Reddit thread as a glTF, and you can't iterate the
-palette without reopening the slicer.
+Modern multi-color slicers — Bambu Studio, OrcaSlicer, and the Snapmaker U1
+among them — offer powerful color authoring tools (per-face painters,
+gradient fills, image projection). Once a multi-color print is sliced,
+though, the color information is effectively trapped inside the slicer file.
+You can't preview the recolored print on a product page, you can't ship it
+to a Blender artist, you can't share it on a Reddit thread as a glTF, and
+you can't iterate the palette without reopening the slicer.
 
 This project liberates that data. It does three things:
 
@@ -45,15 +44,31 @@ The same parser is also published as a headless TypeScript library and a Node
 CLI, so it can run in build pipelines, batch jobs, server-side renderers, and
 the round-trip CI tests in this repo.
 
+**A note on scope:** The parser contains no vendor-specific code branches —
+Bambu Studio, OrcaSlicer, and Snapmaker U1 all write the same `paint_color`
+encoding, and the decoder handles all three identically. The Surface Color
+Stitch roadmap item is the one genuinely U1-adjacent feature; it is not yet
+implemented and is flagged as such in the roadmap.
+
+**The opportunity this opens for Snapmaker:** As far as I can find, no
+consumer 3D-printer brand currently offers buyers a way to see a print at
+true size, in chosen colors, in their own space before printing. This tool
+makes that workflow available today in a browser — no install, no account. A
+U1 owner, or a prospective buyer, could open any `.3mf`, pick their filament
+colors, and see the finished part standing on their desk at 1:1 scale via AR
+before the print starts. Snapmaker U1 would be the first printer brand to
+put a color-accurate, true-scale AR preview in front of customers as a
+community-endorsed workflow.
+
 ## Mapped to the three judging criteria
 
 ### 1. Innovation and technical depth
 
-- **Reverse-engineered decoder** for the OrcaSlicer / Snapmaker U1
-  `paint_color` per-face subdivision tree (right-to-left nibble-packed
-  recursive tree with state-overflow encoding for ≥4 extruders). No public
-  spec exists; the implementation reads OrcaSlicer C++ and reconstructs the
-  format in TypeScript. Documented in
+- **Reverse-engineered decoder** for the shared `paint_color` per-face
+  subdivision tree used by Bambu Studio, OrcaSlicer, and Snapmaker U1
+  (right-to-left nibble-packed recursive tree with state-overflow encoding
+  for ≥4 extruders). No public spec exists; the implementation reconstructs
+  the format from OrcaSlicer's open-source C++. Documented in
   [`3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md`](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
 - **Z-plane triangle clipping** turns G-code tool-change metadata
   (MultiAsSingle / Full Spectrum) into real geometry zones in the browser,

@@ -1,9 +1,11 @@
-# 3MF Color Customizer for Snapmaker U1
+# 3MF Color Customizer
 
-**An open color customizer for the Snapmaker U1 multi-color ecosystem. Open a
-`.3mf`, recolor zones in the browser, export GLB, USDZ, or a sliceable 3MF
-that drops straight back into OrcaSlicer. The same code path handles any
-Bambu Studio or OrcaSlicer file because they share the same on-disk encoding.
+**When you convert a multi-color `.3mf` to mesh, most converters export a bare
+geometry and discard the slicer's paint data. As far as I can find, this is
+the first tool that carries those per-face color zones all the way to GLB —
+then lets you recolor them in the browser, reorient and scale the model for
+AR, and export GLB / USDZ / a re-tinted `.3mf`. Works with any Bambu Studio,
+OrcaSlicer, or Snapmaker U1 file; they share the same on-disk encoding.
 100% client-side, MIT-licensed, no telemetry.**
 
 [![Live demo](https://img.shields.io/badge/demo-live-2ea44f?style=for-the-badge)](https://samisalah221.github.io/3mf-to-glb/)
@@ -17,8 +19,10 @@ Bambu Studio or OrcaSlicer file because they share the same on-disk encoding.
 
 > Open a multi-color `.3mf`, recolor any zone in real time, and download a
 > GLB for the web, a USDZ for iOS Quick Look, or a fresh `.3mf` that slices
-> in OrcaSlicer / Snapmaker U1. Everything runs in the browser. Your files
-> never leave your machine.
+> in OrcaSlicer / Bambu / Snapmaker U1. Or hit **View in AR** on a phone to
+> see the recolored model at true print size in your own room — before you
+> spend filament. Everything runs in the browser. Your files never leave
+> your machine.
 
 ## Try it now
 
@@ -28,23 +32,20 @@ No sign-up, no upload. If you don't have a `.3mf` handy, hit
 **"Try with a Snapmaker U1 / OrcaSlicer sample"** on the upload screen, or
 grab one of the fixtures in [`samples/`](./samples) and drop it on the page.
 
-## For the Snapmaker U1 Innovation Fund
-
-A one-page project description written for the Fund judges (with the
-submission checklist) is at [`SNAPMAKER_FUND.md`](./SNAPMAKER_FUND.md).
+> **Snapmaker U1 Innovation Fund submission:** project description and
+> checklist → [`SNAPMAKER_FUND.md`](./SNAPMAKER_FUND.md).
 
 ## Why this project exists
 
 Color data in modern multi-color 3D printing is increasingly trapped inside
 **vendor-specific slicer extensions** layered on top of the open
-[ISO/IEC 14739 3MF](https://3mf.io/) container. The Snapmaker U1 ships with
-some of the most interesting color authoring tools on any consumer printer
-right now (Full Spectrum gradients, Surface Color Stitch image projection,
-plus the OrcaSlicer-derived multi-material painter), but once a multi-color
-print is sliced, the color information is effectively stuck inside the
-slicer file. You can't preview the recolored print on a product page, you
-can't share it in AR, you can't iterate the palette without reopening the
-slicer, and you can't hand the model to a designer in Blender.
+[ISO/IEC 14739 3MF](https://3mf.io/) container. Slicers like Bambu Studio,
+OrcaSlicer, and Snapmaker U1 offer increasingly powerful color authoring
+tools (per-face painters, gradient fills, image projection), but once a
+multi-color print is sliced, the color information is effectively stuck
+inside the slicer file. You can't preview the recolored print on a product
+page, you can't share it in AR, you can't iterate the palette without
+reopening the slicer, and you can't hand the model to a designer in Blender.
 
 This project liberates that data. It parses the open 3MF archive, decodes
 the proprietary per-face color extensions on top of it, lets you recolor
@@ -66,8 +67,8 @@ no vendor lock-in.
 
 ## Features
 
-- **Decodes the proprietary per-face paint extension** used by the
-  Snapmaker U1, OrcaSlicer, and Bambu family: a nibble-packed recursive
+- **Decodes the proprietary per-face paint extension** used by Bambu Studio,
+  OrcaSlicer, and Snapmaker U1: a nibble-packed recursive
   triangle-subdivision tree, reverse-engineered and
   [fully documented](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
 - **Handles layer-mode coloring**, including U1 Full Spectrum gradients and
@@ -103,7 +104,7 @@ no vendor lock-in.
   AR model. The orientation is recorded as `asset.extras.applied_rotation_euler_deg`
   and `applied_rotation_quat`; the 3MF write-back is left unrotated so it
   re-slices in its original print-bed layout.
-- **Works across the U1 / OrcaSlicer / Bambu family.** Same `paint_color`
+- **Works across the Bambu / OrcaSlicer / Snapmaker U1 family.** Same `paint_color`
   encoding, same plate/object model, no per-vendor branching in the parser.
 - **100% client-side.** Pure static site, no backend, no telemetry. Works
   offline after first load.
