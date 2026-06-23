@@ -216,26 +216,26 @@ async function checkRotationCase(label, opts, expect) {
   }
 }
 
-// Identity rotation: flat plate (100×100×10 mm). Export is now Y-up (−90°X).
+// Identity rotation: flat plate (100×100×10 mm). Export is always Y-up (−90°X).
 // After −90°X: new Y = old Z (height 10 mm), new Z = −old Y. Model rests at Y=0.
-// extras carry [0,0,0] / [0,0,0,1] (user applied no rotation).
+// extras carry Rx(−90°) — same as every other piece; no special isFlat branch.
 await checkRotationCase('flat plate / no rotation (base-center)', {}, {
   posMin: [-0.05, 0, -0.05],
   posMax: [0.05, 0.01, 0.05],
-  eulerDeg: [0, 0, 0],
-  quat: [0, 0, 0, 1],
+  eulerDeg: [-90, 0, 0],
+  quat: [-0.7071067811865476, 0, 0, 0.7071067811865476],
 });
 
-// +90°X user rotation in Z-up app: old thin Z axis (10 mm) → new Y; old 100 mm
-// Y axis → new Z. base-center rests new bbox Z-min at 0 (Z-up stage). Then the
-// Y-up export bake (−90°X) is applied on top. Net: height (100 mm Y in app →
-// old-export Z) now lands on Y. Thin (10 mm) goes to Z.
+// +90°X user rotation in Z-up app: plate stands up (100 mm along Y in app).
+// base-center puts Z-min at 0, then reorientCloneToYUp (−90°X) converts to Y-up.
+// Net baked rotation = Rx(−90°) ∘ Rx(+90°) = identity → eulerDeg [0,0,0].
+// Geometry: thin 10 mm on Z, tall 100 mm on Y.
 await checkRotationCase('flat plate / +90 X (Y becomes up)', {
   rotationEulerDeg: [90, 0, 0],
 }, {
   posMin: [-0.05, 0, -0.005],
   posMax: [0.05, 0.1, 0.005],
-  eulerDeg: [90, 0, 0],
+  eulerDeg: [0, 0, 0],
 });
 
 // Compose four +90° X snaps using the same world-space premultiply the UI
