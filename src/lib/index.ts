@@ -37,7 +37,7 @@ export type {
 } from '../types/index.js';
 export { UNIT_TO_METERS } from '../types/index.js';
 export type { BuildSceneOptions, BuiltSceneUserData } from './glbBuilder.js';
-export { EXPORT_UP_AXIS } from './glbBuilder.js';
+export { BUILD_UP_AXIS } from './glbBuilder.js';
 export type { GLBAssetExtras } from './glbExporter.js';
 
 import * as THREE from 'three';

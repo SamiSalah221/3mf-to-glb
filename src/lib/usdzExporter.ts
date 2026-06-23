@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { USDZExporter } from 'three/addons/exporters/USDZExporter.js';
-import { reorientCloneToYUp } from './glbBuilder.js';
+import { BUILD_UP_AXIS, reorientCloneToYUp } from './glbBuilder.js';
 
 /**
  * Build a USDZ archive from a THREE scene/group.
@@ -16,9 +16,9 @@ export async function buildUSDZBytes(scene: THREE.Object3D): Promise<Uint8Array>
   const exporter = new USDZExporter();
   const exportScene = scene.clone(true);
 
-  // Convert Z-up (3MF/print-bed frame) → Y-up (glTF/USDZ/AR frame) on the
-  // clone only. The live preview group is never touched.
-  reorientCloneToYUp(exportScene);
+  // Z-up (3MF/print-bed) → Y-up (USDZ/AR frame), clone only.
+  // Gated on BUILD_UP_AXIS so flipping the constant disables the reorient.
+  if (BUILD_UP_AXIS === 'z') reorientCloneToYUp(exportScene);
 
   try {
     // quickLookCompatible: enables flags Quick Look needs to render PBR

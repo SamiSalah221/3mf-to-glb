@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-import { reorientCloneToYUp } from './glbBuilder.js';
+import { BUILD_UP_AXIS, reorientCloneToYUp } from './glbBuilder.js';
 import type { BuiltSceneUserData } from './glbBuilder.js';
 
 interface GLTFWriterLike {
@@ -48,10 +48,8 @@ export async function buildGLBBytes(scene: THREE.Object3D): Promise<Uint8Array> 
   const exporter = new GLTFExporter();
   const exportScene = scene.clone(true);
 
-  // Convert Z-up (3MF/print-bed frame) → Y-up (glTF/AR frame) on the clone
-  // only. The live preview group is never touched.
-  reorientCloneToYUp(exportScene);
-
+  // Read userData before mutating the clone so sceneUd always reflects the
+  // live-preview build frame (not any in-flight export transform).
   const sceneUd = scene.userData as Partial<BuiltSceneUserData>;
   const hasDimensions =
     sceneUd.dimensions &&
@@ -60,24 +58,48 @@ export async function buildGLBBytes(scene: THREE.Object3D): Promise<Uint8Array> 
     sceneUd.dimensions.bboxMinM &&
     sceneUd.dimensions.bboxMaxM;
 
+  // Step 1: Z-up (3MF/print-bed) → Y-up (glTF/AR), clone only.
+  // Gated on BUILD_UP_AXIS so flipping the constant disables the reorient
+  // consistently with the pivot-flooring logic in computePivotOffset.
+  if (BUILD_UP_AXIS === 'z') reorientCloneToYUp(exportScene);
+
   if (hasDimensions && sceneUd.sourceUnit && sceneUd.upAxis && sceneUd.pivotMode && sceneUd.pivotOffsetM) {
-    // Swap Y↔Z in dimension metadata to reflect the -90°X reorientation:
-    // (x, y, z) → (x, z, -y). New Y extent = old Z extent; new Z = old Y.
     const mm = sceneUd.dimensions!.mm;
     const m  = sceneUd.dimensions!.m;
     const oldMin = sceneUd.dimensions!.bboxMinM;
     const oldMax = sceneUd.dimensions!.bboxMaxM;
+    const [ox, oy, oz] = sceneUd.pivotOffsetM;
+    const uq = sceneUd.appliedRotationQuat ?? [0, 0, 0, 1];
+
+    // Rx(-90°): (x,y,z) → (x,z,−y).
+    const dimensions_mm = { x: mm.x, y: mm.z, z: mm.y };
+    const dimensions_m  = { x: m.x,  y: m.z,  z: m.y  };
+    const bbox_min_m: [number, number, number]     = [oldMin[0],  oldMin[2], -oldMax[1]];
+    const bbox_max_m: [number, number, number]     = [oldMax[0],  oldMax[2], -oldMin[1]];
+    const pivot_offset_m: [number, number, number] = [ox, oz, -oy];
+    // Total rotation baked into export geometry = Rx(-90°) ∘ user rotation.
+    const qReorient = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
+    const qUser = new THREE.Quaternion(uq[0], uq[1], uq[2], uq[3]);
+    const qTotal = qReorient.multiply(qUser);
+    const applied_rotation_quat: [number, number, number, number] = [qTotal.x, qTotal.y, qTotal.z, qTotal.w];
+    const eulerFig = new THREE.Euler().setFromQuaternion(qTotal, 'XYZ');
+    const applied_rotation_euler_deg: [number, number, number] = [
+      THREE.MathUtils.radToDeg(eulerFig.x),
+      THREE.MathUtils.radToDeg(eulerFig.y),
+      THREE.MathUtils.radToDeg(eulerFig.z),
+    ];
+
     const extras: GLBAssetExtras = {
       source_unit: sceneUd.sourceUnit,
-      dimensions_mm: { x: mm.x, y: mm.z, z: mm.y },
-      dimensions_m:  { x: m.x,  y: m.z,  z: m.y  },
-      bbox_min_m: [oldMin[0],  oldMin[2], -oldMax[1]],
-      bbox_max_m: [oldMax[0],  oldMax[2], -oldMin[1]],
+      dimensions_mm,
+      dimensions_m,
+      bbox_min_m,
+      bbox_max_m,
       up_axis: 'y',
       pivot_mode: sceneUd.pivotMode,
-      pivot_offset_m: sceneUd.pivotOffsetM,
-      applied_rotation_euler_deg: sceneUd.appliedRotationEulerDeg ?? [0, 0, 0],
-      applied_rotation_quat: sceneUd.appliedRotationQuat ?? [0, 0, 0, 1],
+      pivot_offset_m,
+      applied_rotation_euler_deg,
+      applied_rotation_quat,
       generator: '3mf-to-glb',
     };
     // GLTFExporter exposes writer.json internally but the public type omits

@@ -1,9 +1,11 @@
 # Snapmaker U1 Innovation Fund: 3MF Color Customizer
 
-> An open browser-based color customizer for the Snapmaker U1 multi-color
-> ecosystem. Recolor any zone in a `.3mf`, preview live in 3D, then export
-> GLB for the web, USDZ for iOS AR, or a fresh sliceable `.3mf` that drops
-> straight back into OrcaSlicer / Snapmaker U1. 100% client-side. MIT.
+> An open browser-based color and orientation tool for the Snapmaker U1
+> multi-color ecosystem. Recolor any zone live in 3D, adjust orientation
+> with ±90° snap controls or free Euler inputs, then export a color-accurate
+> GLB for the web, USDZ for iOS Quick Look, Scene Viewer for Android AR, or
+> a re-tinted `.3mf` that drops straight back into OrcaSlicer / Snapmaker U1.
+> 100% client-side, mobile-ready. MIT.
 
 - **Submitted to:** Snapmaker U1 Innovation Fund Open Competition, Phase 1
 - **Author:** Sami Salah  (independent)
@@ -30,13 +32,17 @@ This project liberates that data. It does three things:
    MultiAsSingle / Full Spectrum layer-mode encoding. The decoder is
    reverse-engineered from the OrcaSlicer source and fully documented in
    [`docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md`](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
-2. **Recolors** every zone in an interactive browser viewport (Three.js
-   + React Three Fiber), with WYSIWYG color fidelity (tone-mapping and IBL
-   pinned off so the picked hex is the rendered hex).
+2. **Recolors and reorients** every zone in an interactive browser viewport
+   (Three.js + React Three Fiber), with strict WYSIWYG fidelity. Tone-mapping
+   and IBL are pinned off so the picked hex is exactly the rendered hex. An
+   Orientation panel provides ±90° snap rotations, free Euler inputs, and a
+   one-click reset — all baked into vertex positions and normals so the
+   exported GLB/USDZ carries exactly the pose shown on screen, with no silent
+   reorientation by the exporter.
 3. **Exports** in three open formats:
    - **GLB** (Khronos glTF, ISO/IEC 12113) for Blender, Unity, Three.js,
      `<model-viewer>`, and product pages.
-   - **USDZ** for Apple Quick Look and iOS AR.
+   - **USDZ** for Apple Quick Look and iOS AR; **Scene Viewer** for Android AR.
    - **3MF** with refreshed filament colors so the file drops straight back
      into OrcaSlicer / Snapmaker U1 and slices.
 
@@ -84,9 +90,16 @@ community-endorsed workflow.
   colors while preserving geometry, `paint_color` trees, model_settings, and
   custom G-code. The result is a drop-in replacement that slices in
   OrcaSlicer / Snapmaker U1.
+- **WYSIWYG orientation export**: ±90° snap rotations and free Euler inputs
+  in the Orientation panel are baked directly into vertex positions and normals
+  before serialisation. The GLB carries an identity node transform — the pose
+  is geometry-level, not a scene-graph transform an AR runtime might ignore or
+  override. A flat keychain lies flat in AR by default; the user presses +90°X
+  to stand it up, re-exports, and the new pose is reproduced faithfully.
 - **Multi-format export** (GLB + USDZ + 3MF) and a platform-aware AR launcher
   (Quick Look on iOS, Scene Viewer on Android, GLB download on desktop), all
-  client-side.
+  client-side. The UI is mobile-responsive and touch-friendly, so the whole
+  workflow — load, recolor, reorient, preview in AR — works on a phone.
 - **Real-world scale** end-to-end. The 3MF `<model unit>` is parsed (every
   legal value: micron through meter), baked into the exported vertex
   positions in meters, surfaced as `asset.extras` on the GLB, and
@@ -152,9 +165,12 @@ hypothetical:
 2. Click **"Try with a Snapmaker U1 / OrcaSlicer sample"**.
 3. The watchful-owl sample loads. Click a colored zone, pick a new hex, and
    the viewport recolors in real time.
-4. Hit **Export as 3MF (re-tint)** to get a `.3mf` that slices in OrcaSlicer.
-   Hit **Export as USDZ** for an iOS AR-ready file. Hit **View in AR** on a
-   phone to drop the recolored model into your room.
+4. Open the **Orientation** panel and press **+90° X** to rotate the model,
+   or leave it at the default print-bed pose. The export will match exactly.
+5. Hit **Export as 3MF (re-tint)** to get a `.3mf` that slices in OrcaSlicer.
+   Hit **Export as USDZ** for iOS Quick Look. Hit **View in AR** on any phone
+   (Quick Look on iOS, Scene Viewer on Android) to drop the recolored,
+   reoriented model into your room at true print size.
 
 ## What funding unlocks (honest near-term plan)
 
@@ -184,7 +200,9 @@ Listed roughly in priority order, all documented in the repo roadmap:
 - [x] Decoder documented down to the bit level.
 - [x] Headless library + Node CLI for downstream use.
 - [x] 3MF re-tint round-trip end-to-end verified across four fixtures.
-- [x] USDZ export + AR launcher for mobile previews.
+- [x] USDZ + Scene Viewer AR launcher (iOS Quick Look + Android Scene Viewer).
+- [x] WYSIWYG orientation export — exported pose matches model view exactly.
+- [x] Mobile-responsive UI, works end-to-end on a phone.
 
 ---
 

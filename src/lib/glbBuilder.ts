@@ -10,15 +10,17 @@ import type {
 import { hexToLinearRGBA } from './colorConvert.js';
 
 /**
- * The up axis of the export coordinate system.
+ * Up axis of the BUILD (source / print-bed) coordinate frame.
  *
- * The current pipeline emits geometry in the source 3MF's native frame,
- * which the spec defines as Z-up (the print direction). We do not yet apply
- * a Y-up rotation for glTF, so the GLB inherits Z-up. Presets are defined
- * relative to this value so swapping the up axis later only requires
- * updating this constant.
+ * Geometry is built and pivoted in this Z-up frame (the 3MF / print-bed
+ * convention). The export clone is separately reoriented to Y-up by
+ * `reorientCloneToYUp` before serialisation. This constant governs the
+ * pivot-flooring logic in `computePivotOffset` and MUST stay coupled to the
+ * reorient calls in both exporters — if you flip it to 'y' the reorient must
+ * not run (geometry would already be Y-up and a second rotation would corrupt
+ * it). The exported GLB/USDZ is always Y-up regardless of this value.
  */
-export const EXPORT_UP_AXIS: 'y' | 'z' = 'z';
+export const BUILD_UP_AXIS: 'y' | 'z' = 'z';
 
 export interface BuildSceneOptions {
   /**
@@ -62,7 +64,7 @@ export interface BuiltSceneUserData {
   unitToMeters: number;
   /** Source unit declared on the 3MF root <model>. */
   sourceUnit: SourceUnit;
-  /** Up axis of the exported coordinate system. Mirrors EXPORT_UP_AXIS. */
+  /** Up axis of the build (source) coordinate frame. Mirrors BUILD_UP_AXIS. */
   upAxis: 'y' | 'z';
   /** AABB sizes (mm + meters) post-bake. Same on every pivot mode — only the position shifts. */
   dimensions: Dimensions;
@@ -109,6 +111,7 @@ export function reorientCloneToYUp(clone: THREE.Object3D): void {
     }
   });
 }
+
 
 /**
  * Build a viewer/export scene from a plate's mesh chunks.
@@ -226,7 +229,7 @@ export function buildSceneFromPlate(
     centerM,
     centroidM,
     customPivotMm,
-    EXPORT_UP_AXIS,
+    BUILD_UP_AXIS,
   );
 
   // Pass 2: emit geometry. Apply pivot offset to cached positions and
@@ -325,7 +328,7 @@ export function buildSceneFromPlate(
     thinAxis,
     unitToMeters,
     sourceUnit,
-    upAxis: EXPORT_UP_AXIS,
+    upAxis: BUILD_UP_AXIS,
     dimensions,
     pivotMode,
     pivotOffsetM: [pivotOffsetM[0], pivotOffsetM[1], pivotOffsetM[2]],
