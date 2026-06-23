@@ -16,7 +16,7 @@ import { useAppStore } from '../store/useAppStore';
 // extent is ~DISPLAY_FRAME (=3) on the longest axis. Distance ~7 keeps the
 // model in frame with some viewport margin.
 const CAMERA_HOMES: Record<'x' | 'y' | 'z', { dir: [number, number, number]; up: [number, number, number] }> = {
-  x: { dir: [1, 0, 0], up: [0, 1, 0] },
+  x: { dir: [1, 0, 0], up: [0, 0, 1] },
   y: { dir: [0, 1, 0], up: [0, 0, 1] },
   z: { dir: [0, 0, 1], up: [0, 1, 0] },
 };
