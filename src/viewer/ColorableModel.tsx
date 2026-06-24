@@ -74,6 +74,19 @@ export function ColorableModel() {
     return Math.max(m.x, m.y, m.z) * GIZMO_FRACTION;
   }, [sceneGroup]);
 
+  const bedPlacement = useMemo(() => {
+    if (!sceneGroup) return null;
+    const ud = sceneGroup.userData as Partial<BuiltSceneUserData>;
+    const m = ud.dimensions?.m;
+    const bboxMinM = ud.dimensions?.bboxMinM;
+    const center = ud.bboxCenterM;
+    if (!m || !bboxMinM || !center) return null;
+    const footprint = Math.max(m.x, m.y);
+    const bedSize = footprint * 1.6;
+    const eps = Math.max(m.z, footprint) * 0.002;
+    return { cx: center[0], cy: center[1], z: bboxMinM[2] - eps, bedSize };
+  }, [sceneGroup]);
+
   // Publish thin-axis, dimensions, and bbox center to the store on each
   // scene rebuild. The bbox center is used by ViewerCanvas to keep
   // OrbitControls feeling centered around the model body, regardless of
@@ -166,6 +179,15 @@ export function ColorableModel() {
       onPointerOut={handlePointerOut}
     >
       <primitive object={sceneGroup} />
+      {bedPlacement && (
+        <mesh
+          position={[bedPlacement.cx, bedPlacement.cy, bedPlacement.z]}
+          raycast={() => null}
+        >
+          <planeGeometry args={[bedPlacement.bedSize, bedPlacement.bedSize]} />
+          <meshBasicMaterial color="#1e293b" side={THREE.DoubleSide} transparent opacity={0.85} />
+        </mesh>
+      )}
       {/* Gizmo at the export pivot (local origin of the scene group). The
           wrapper's scale applies, so the gizmo grows / shrinks with the
           model and remains visually proportional. */}
