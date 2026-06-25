@@ -2,9 +2,11 @@ import { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useAppStore } from '../store/useAppStore';
 import { parse3MF } from '../lib/parse3MF';
-// Vite asset import: kept out of the JS bundle, emitted as a hashed file
-// next to index.html. Lets the demo offer a sample without any upload.
-import u1SampleUrl from '../../samples/watchful-owl.3mf?url';
+// Fetched on demand (not bundled) so the 19MB owl never ships in dist/.
+// raw.githubusercontent serves Access-Control-Allow-Origin: *, so this fetch
+// works from the Pages origin.
+const U1_SAMPLE_URL =
+  'https://raw.githubusercontent.com/SamiSalah221/3mf-to-glb/master/samples/watchful-owl.3mf';
 
 const U1_SAMPLE_NAME = 'sample.3mf';
 
@@ -37,7 +39,7 @@ export function UploadScreen() {
   const onTrySample = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(u1SampleUrl);
+      const res = await fetch(U1_SAMPLE_URL);
       if (!res.ok) throw new Error(`Sample download failed (${res.status})`);
       const bytes = new Uint8Array(await res.arrayBuffer());
       const file = new File([new Uint8Array(bytes)], U1_SAMPLE_NAME, { type: 'model/3mf' });
