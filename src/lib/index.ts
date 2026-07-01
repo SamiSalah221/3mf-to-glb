@@ -16,6 +16,7 @@ export {
   linearToHex,
   hexToRgb,
 } from './colorConvert.js';
+export { filamentMixerLerp, mixFilamentHex } from './filamentMixer.js';
 export { applyRecolor, parseRecolorArg } from './recolor.js';
 export type { FilamentRecolorMap } from './recolor.js';
 export {

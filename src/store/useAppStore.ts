@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ParseResult, FilamentSlot, Dimensions, PivotMode, RotationQuat } from '../types';
-import { mixHexLinear } from '../lib/colorConvert';
+import { mixFilamentHex } from '../lib/filamentMixer';
 
 /**
  * Recompute every Snapmaker U1 "mixed" slot's currentColor from its two source
@@ -15,7 +15,7 @@ function withMixes(filaments: FilamentSlot[]): FilamentSlot[] {
     const a = byIndex.get(f.mix.sources[0]);
     const b = byIndex.get(f.mix.sources[1]);
     if (!a || !b) return f;
-    return { ...f, currentColor: mixHexLinear(a.currentColor, b.currentColor, f.mix.ratioA) };
+    return { ...f, currentColor: mixFilamentHex(a.currentColor, b.currentColor, f.mix.ratioA) };
   });
 }
 

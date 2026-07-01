@@ -37,6 +37,53 @@ This means:
 The first three rows cover the bulk of U1 color print use cases. Surface
 Color Stitch is the open one.
 
+## Mixed filaments (virtual extruders)
+
+Full Spectrum projects also define **mixed filaments**: virtual extruders whose
+color is a pigment blend of two of the physical filaments. `paint_color` trees
+and per-part `extruder` metadata reference them by extruder index ≥ `baseCount+1`.
+They live in `project_settings.config` under `mixed_filament_definitions`, a
+`;`-separated list of `,`-separated rows.
+
+**Row format** (modern dialect, 15+ fields):
+
+```
+compA, compB, enabled, custom, mix_b_percent, pointillism, g<ids>, w<wts>,
+m<distMode>, z<N>, xa<off>, xb<off>, d<deleted>, o<origin>, u<stableId>
+[, cm<N>] [, r<k>/<wA>/<wB>]
+```
+
+Legacy dialect is just `compA, compB, enabled, mix_b_percent` (4 fields).
+
+Key semantics (`src/lib/parse3MF.ts` → `parseMixedFilamentDefs`), verified
+against [ratdoux/OrcaSlicer-FullSpectrum](https://github.com/ratdoux/OrcaSlicer-FullSpectrum)
+(`MixedFilament.{hpp,cpp}`):
+
+- **Virtual extruder ids count enabled + non-deleted rows ONLY.** The slicer's
+  `mixed_index_from_filament_id` does `if (!enabled || deleted) continue`, so
+  disabled rows (`enabled=0`) and tombstones (`d1` token) consume no index. The
+  k-th *surviving* row (0-based ordinal) becomes extruder `baseCount + ordinal + 1`.
+  Rows with invalid components (`a===b`, or outside `1..baseCount`) are likewise
+  rejected. Enumerating over all rows is a bug: the sea sample has 6 disabled
+  tombstones *first*, so a naive count shifts every painted state (11–15,
+  ~84k faces) onto the wrong recipe.
+- **`mix_b_percent` is the share of component B**, not A. `ratioA = (100 − mix_b)/100`.
+  It sits at field[4] (modern) or field[3] (legacy).
+- **`r<k>/<wA>/<wB>`** (e.g. `r1/0.8000/0.2000`) overrides the percentage with
+  explicit weights: `ratioA = wA/(wA+wB)`. **`cm<N>`** is ignorable.
+- **`u<N>`** is a persistent label, NOT the slot index (it can skip values).
+
+**Blending uses a pigment model, not linear-RGB averaging.** The slicer blends
+with `FilamentMixer`, a degree-4 polynomial (330 features, 7 inputs) approximating
+Mixbox (MIT © 2026 Justin Hayes, `filament_mixer_model.h`), ported verbatim to
+`src/lib/filamentMixer.ts`. Navy + yellow → green `#2F8D38`, the way real pigment
+mixing looks — a linear-RGB lerp gives a wrong khaki. `mixFilamentHex` short-circuits
+identical inputs to an exact copy so self-mixes round-trip precisely.
+
+Both `samples/*U1*.3mf` fixtures exercise this path; assertions live in
+`scripts/test-roundtrip.mjs` (sea = 15 slots with custom ratios and `r`-tokens;
+parrot = 9 slots, slot 7 navy+yellow green-family).
+
 ## What Surface Color Stitch would need
 
 If the U1's image-stitch tool emits texture-based color (the most likely

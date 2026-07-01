@@ -2,7 +2,7 @@ import JSZip from 'jszip';
 import type { ParseResult, Plate, MeshChunk, FilamentSlot, SourceUnit } from '../types/index.js';
 import { UNIT_TO_METERS } from '../types/index.js';
 import { parseXml } from './parseXml.js';
-import { mixHexLinear } from './colorConvert.js';
+import { mixFilamentHex } from './filamentMixer.js';
 
 const DEBUG = false;
 const debugLog = (...args: unknown[]) => { if (DEBUG) console.log(...args); };
@@ -298,7 +298,7 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
       const cA = filamentColors[def.sources[0] - 1];
       const cB = filamentColors[def.sources[1] - 1];
       if (!cA || !cB) continue;
-      const blended = mixHexLinear(cA, cB, def.ratioA);
+      const blended = mixFilamentHex(cA, cB, def.ratioA);
       filaments.push({
         index: def.index,
         originalColor: blended,
@@ -344,7 +344,7 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
         } catch { /* no thumb */ }
       }
 
-      const filamentIndicesUsed = [...new Set(meshChunks.map(c => c.filamentIndex))].sort();
+      const filamentIndicesUsed = [...new Set(meshChunks.map(c => c.filamentIndex))].sort((a, b) => a - b);
 
       resultPlates.push({
         id: plateInfo.id,
@@ -363,7 +363,7 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
       name: 'Plate 1',
       thumbnailUrl: null,
       meshChunks: allChunks,
-      filamentIndicesUsed: [...new Set(allChunks.map(c => c.filamentIndex))].sort(),
+      filamentIndicesUsed: [...new Set(allChunks.map(c => c.filamentIndex))].sort((a, b) => a - b),
     });
   }
 
@@ -408,34 +408,68 @@ interface MixedFilamentDef {
 }
 
 /**
- * Parse Snapmaker U1's `mixed_filament_definitions` string. Each `;`-delimited
- * entry is a comma list, e.g. `1,2,1,0,50,0,g,w,m2,...,u1`:
+ * Parse Snapmaker U1's `mixed_filament_definitions` string (Full Spectrum).
+ * Each `;`-delimited entry is a comma list. Modern dialect (15+ fields):
+ *   `compA, compB, enabled, custom, mix_b_percent, pointillism, g<ids>, w<wts>,
+ *    m<mode>, z<N>, xa<off>, xb<off>, d<deleted>, o<origin>, u<stableId>
+ *    [, cm<N>] [, r<k>/<wA>/<wB>]`
+ * Legacy dialect: `compA, compB, enabled, mix_b_percent` (4 fields).
  *   - fields[0], fields[1] = source base filament indices A, B (1-based)
- *   - fields[4]            = mix percentage of A (defaults to 50)
- *   - the `uN` field       = the slicer's internal virtual-filament label
- * Only the fields we rely on are read; the rest are slicer ramming params.
+ *   - fields[2]            = enabled (0/1)
+ *   - mix_b_percent        = fields[4] (modern) / fields[3] (legacy) — the share
+ *                            of component B; ratioA = (100 - mix_b) / 100
+ *   - `d1` token           = deleted (tombstone)
+ *   - `r<k>/<wA>/<wB>`      = explicit A/B weights, overrides mix_b_percent
+ *                            (ratioA = wA / (wA + wB)); `cm<N>` is ignorable
+ *   - `u<N>` field         = the slicer's stable label, NOT the slot index
  *
- * The resolved extruder index is the slot's POSITION in the filament list:
- * base filaments occupy 1..baseCount, then mixes are appended in the order they
- * appear here, so the k-th mix is `baseCount + k`. The `uN` number is NOT the
- * slot index — it can skip values (e.g. u1..u6 then u15..u25 in the sea sample),
- * which would leave gaps and strand paint_color references on a gray fallback.
+ * CRITICAL — virtual extruder indices count enabled + non-deleted rows ONLY.
+ * The slicer's `mixed_index_from_filament_id` does `if (!enabled || deleted)
+ * continue`, so disabled/deleted tombstones consume no index. The k-th
+ * *surviving* row (0-based `ordinal`) becomes extruder `baseCount + ordinal + 1`.
+ * The sea sample has 6 disabled tombstones FIRST; enumerating over all rows
+ * (the old bug) shifts every painted state (11..15 = ~84k faces) onto the wrong
+ * recipe. Rows with invalid components (a===b or outside 1..baseCount) are
+ * likewise rejected and consume no index.
  */
 function parseMixedFilamentDefs(raw: string, baseCount: number): MixedFilamentDef[] {
   const defs: MixedFilamentDef[] = [];
+  let ordinal = 0; // counts only rows that receive a virtual extruder id
   for (const entry of raw.split(';')) {
     if (!entry.trim()) continue;
     const fields = entry.split(',').map((f) => f.trim());
+    if (fields.length < 4) continue;
+
     const a = parseInt(fields[0], 10);
     const b = parseInt(fields[1], 10);
-    // The `uN` field marks a real mix entry; its numeric value is a label, not
-    // the slot index (see doc comment), so we only check for its presence.
-    const hasUField = fields.some((f) => /^u\d+$/i.test(f));
-    if (!hasUField || !Number.isInteger(a) || !Number.isInteger(b)) continue;
-    let pct = parseFloat(fields[4]);
-    if (!Number.isFinite(pct)) pct = 50;
-    pct = Math.min(100, Math.max(0, pct));
-    defs.push({ index: baseCount + defs.length + 1, sources: [a, b], ratioA: pct / 100 });
+    const enabled = parseInt(fields[2], 10);
+    const deleted = fields.some((f) => /^d1$/i.test(f));
+
+    // Skip rows the slicer would not assign a virtual id to.
+    if (enabled === 0 || deleted) continue;
+    if (!Number.isInteger(a) || !Number.isInteger(b)) continue;
+    if (a === b || a < 1 || a > baseCount || b < 1 || b > baseCount) continue;
+
+    // mix_b_percent lives at field[4] in the modern dialect, field[3] in the
+    // legacy 4-field one. It is the share of component B.
+    let mixB = parseFloat(fields.length === 4 ? fields[3] : fields[4]);
+    if (!Number.isFinite(mixB)) mixB = 50;
+    mixB = Math.min(100, Math.max(0, mixB));
+    let ratioA = (100 - mixB) / 100;
+
+    // An `r<k>/<wA>/<wB>` token overrides the percentage with explicit weights.
+    const rTok = fields.find((f) => /^r\d+\/[\d.]+\/[\d.]+$/i.test(f));
+    if (rTok) {
+      const parts = rTok.split('/');
+      const wA = parseFloat(parts[1]);
+      const wB = parseFloat(parts[2]);
+      if (Number.isFinite(wA) && Number.isFinite(wB) && wA + wB > 0) {
+        ratioA = wA / (wA + wB);
+      }
+    }
+
+    defs.push({ index: baseCount + ordinal + 1, sources: [a, b], ratioA });
+    ordinal++;
   }
   return defs;
 }

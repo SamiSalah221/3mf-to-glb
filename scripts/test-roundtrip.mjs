@@ -27,6 +27,7 @@ import {
   parse3MF,
   applyRecolor,
   exportRecolored3MF,
+  mixFilamentHex,
 } from '../dist-lib/lib/index.js';
 
 setDefaultDomParser(new DOMParser());
@@ -253,6 +254,80 @@ await checkRotationCase('flat plate / 4 x +90 X composes to identity', {
   posMin: [-0.05, 0, -0.05],
   posMax: [0.05, 0.01, 0.05],
 });
+
+// ---------------------------------------------------------------------------
+// Snapmaker U1 Full Spectrum: mixed-filament (virtual extruder) resolution.
+//
+// Virtual extruder ids count enabled + non-deleted rows only; field[4] is the
+// share of component B (ratioA = (100 - mix_b) / 100); `r<k>/<wA>/<wB>` tokens
+// override with explicit weights; blends use the FilamentMixer pigment model.
+// ---------------------------------------------------------------------------
+
+// Pigment-model anchors: navy + yellow -> green (not khaki), and self-mixes
+// must round-trip exactly through the short-circuit.
+try {
+  const green = mixFilamentHex('#002185', '#FCD300', 0.5);
+  if (green !== '#2F8D38') throw new Error(`navy+yellow @0.5 = ${green}, expected #2F8D38`);
+  const self = mixFilamentHex('#FF00FF', '#FF00FF', 0.37);
+  if (self !== '#FF00FF') throw new Error(`self-mix = ${self}, expected #FF00FF`);
+  reportPass(`FilamentMixer anchors: navy+yellow=#2F8D38, self-mix exact`);
+} catch (err) {
+  reportFail('FilamentMixer anchors', err);
+}
+
+function findMix(filaments, index) {
+  const f = filaments.find((s) => s.index === index);
+  if (!f) throw new Error(`slot ${index} missing`);
+  if (!f.mix) throw new Error(`slot ${index} has no mix`);
+  return f;
+}
+function assertMix(filaments, index, a, b, ratioA) {
+  const f = findMix(filaments, index);
+  if (f.mix.sources[0] !== a || f.mix.sources[1] !== b) {
+    throw new Error(`slot ${index} sources=(${f.mix.sources}) expected (${a},${b})`);
+  }
+  if (Math.abs(f.mix.ratioA - ratioA) > 1e-6) {
+    throw new Error(`slot ${index} ratioA=${f.mix.ratioA} expected ${ratioA}`);
+  }
+}
+
+const seaName = SAMPLES.find((n) => n.includes('sea'));
+if (seaName) {
+  try {
+    const p = await parse3MF(await readFile(resolve('samples', seaName)));
+    if (p.filaments.length !== 15) throw new Error(`slots=${p.filaments.length} expected 15`);
+    assertMix(p.filaments, 5, 1, 2, 0.5);
+    assertMix(p.filaments, 11, 1, 3, 0.35); // (1,3) @ mix_b 65
+    assertMix(p.filaments, 12, 1, 2, 0.40); // (1,2) @ mix_b 60
+    assertMix(p.filaments, 13, 3, 4, 0.90); // (3,4) @ mix_b 10
+    assertMix(p.filaments, 14, 3, 1, 0.80); // r-token 0.8/0.2
+    assertMix(p.filaments, 15, 3, 4, 0.80); // r-token 0.8/0.2
+    const allowed = new Set([1, 2, 3, 5, 6, 7, 11, 12, 13, 14, 15]);
+    const used = p.plates[0].filamentIndicesUsed;
+    for (const i of used) if (!allowed.has(i)) throw new Error(`plate uses unexpected slot ${i}`);
+    reportPass(`${seaName}: 15 slots, custom ratios + r-tokens resolved, plate used=[${used}]`);
+  } catch (err) {
+    reportFail(seaName, err);
+  }
+}
+
+const parrotName = SAMPLES.find((n) => n.includes('U1') && !n.includes('sea'));
+if (parrotName) {
+  try {
+    const p = await parse3MF(await readFile(resolve('samples', parrotName)));
+    // 5 enabled rows + 4 base = 9 (the 6th row is enabled=0/d1 and consumes no id).
+    if (p.filaments.length !== 9) throw new Error(`slots=${p.filaments.length} expected 9`);
+    assertMix(p.filaments, 7, 1, 4, 0.5); // navy + yellow
+    const c = findMix(p.filaments, 7).currentColor;
+    const r = parseInt(c.slice(1, 3), 16);
+    const g = parseInt(c.slice(3, 5), 16);
+    const b = parseInt(c.slice(5, 7), 16);
+    if (!(g > r && g > b)) throw new Error(`slot 7 = ${c} is not green-family (g must dominate)`);
+    reportPass(`${parrotName}: 9 slots, slot 7 navy+yellow = ${c} (green-family)`);
+  } catch (err) {
+    reportFail(parrotName, err);
+  }
+}
 
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail === 0 ? 0 : 1);
