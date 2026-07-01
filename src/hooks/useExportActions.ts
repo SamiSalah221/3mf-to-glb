@@ -1,0 +1,93 @@
+import { useState, useEffect } from 'react';
+import { exportGLB, triggerBrowserDownload, buildGLBBytes, getExportScene } from '../lib/glbExporter';
+import { buildUSDZBytes } from '../lib/usdzExporter';
+import { exportRecolored3MF } from '../lib/build3MF';
+import { detectArPlatform, launchQuickLook, launchWebXR, type ArPlatform } from '../lib/arLauncher';
+import { useAppStore } from '../store/useAppStore';
+
+type ExportingState = null | 'glb' | '3mf' | 'ar';
+
+export function useExportActions() {
+  const [exporting, setExporting] = useState<ExportingState>(null);
+  const [arPlatform, setArPlatform] = useState<ArPlatform>('desktop');
+  const file = useAppStore((s) => s.file);
+  const filaments = useAppStore((s) => s.filaments);
+
+  useEffect(() => {
+    setArPlatform(detectArPlatform());
+  }, []);
+
+  const baseName = (file?.name.replace(/\.3mf$/i, '') ?? 'model') + '-recolored';
+
+  const handleExportGLB = async () => {
+    setExporting('glb');
+    try {
+      await exportGLB(`${baseName}.glb`);
+    } catch (err) {
+      console.error('GLB export failed:', err);
+      window.alert('GLB export failed. See console for details.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExport3MF = async () => {
+    if (!file) return;
+    setExporting('3mf');
+    try {
+      const buf = await file.arrayBuffer();
+      const mapping = Object.fromEntries(filaments.map((f) => [f.index, f.currentColor]));
+      const bytes = await exportRecolored3MF(buf, mapping);
+      triggerBrowserDownload(bytes, `${baseName}.3mf`, 'model/3mf');
+    } catch (err) {
+      console.error('3MF export failed:', err);
+      window.alert('3MF export failed. See console for details.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleViewInAR = async () => {
+    const scene = getExportScene();
+    if (!scene) return;
+    setExporting('ar');
+    try {
+      if (arPlatform === 'ios') {
+        const bytes = await buildUSDZBytes(scene);
+        launchQuickLook(bytes, `${baseName}.usdz`);
+      } else if (arPlatform === 'android') {
+        const bytes = await buildGLBBytes(scene);
+        await launchWebXR(bytes, `${baseName}.glb`);
+      } else {
+        const bytes = await buildGLBBytes(scene);
+        triggerBrowserDownload(bytes, `${baseName}.glb`, 'model/gltf-binary');
+        window.alert(
+          'AR Quick Look (iOS) and Scene Viewer (Android) only work on mobile. ' +
+            'A GLB has been downloaded — drop it into a viewer like model-viewer or Blender.',
+        );
+      }
+    } catch (err) {
+      console.error('AR launch failed:', err);
+      window.alert('AR launch failed. See console for details.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const arLabel =
+    arPlatform === 'ios'
+      ? 'View in AR (iOS Quick Look)'
+      : arPlatform === 'android'
+        ? 'View in AR (Android WebXR)'
+        : 'View in AR (download GLB)';
+
+  return {
+    handleExportGLB,
+    handleExport3MF,
+    handleViewInAR,
+    arLabel,
+    exporting,
+    busy: exporting !== null,
+    file,
+  };
+}

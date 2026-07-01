@@ -30,11 +30,6 @@ function eulerDegToQuat(x: number, y: number, z: number): RotationQuat {
   return [q.x, q.y, q.z, q.w];
 }
 
-/**
- * Pre-multiply (world-space) a quaternion by a 90° rotation about a world
- * axis. World-space premultiply means the snap is around the global X/Y/Z
- * even after prior rotations, which is what users expect from "rotate +90 X".
- */
 function applyWorldSnap(current: RotationQuat, axis: Axis, deltaDeg: number): RotationQuat {
   const delta = new THREE.Quaternion().setFromAxisAngle(AXIS_VECTORS[axis], deltaDeg * RAD_PER_DEG);
   const curr = new THREE.Quaternion(current[0], current[1], current[2], current[3]);
@@ -47,7 +42,6 @@ export function RotationControls() {
   const setRotationQuat = useAppStore((s) => s.setRotationQuat);
   const resetRotation = useAppStore((s) => s.resetRotation);
 
-  // Re-derive the readout whenever the source-of-truth quaternion changes.
   const eulerDeg = useMemo(() => quatToEulerDeg(rotationQuat), [rotationQuat]);
 
   const handleSnap = (axis: Axis, delta: number) => {
@@ -65,29 +59,26 @@ export function RotationControls() {
   return (
     <div className="space-y-2 text-xs">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-slate-400 font-semibold uppercase tracking-wider">
-          Orientation
-        </span>
+        <span className="text-tx3 font-mono uppercase tracking-wider">Orientation</span>
         <button
           type="button"
           onClick={resetRotation}
-          className="text-slate-400 hover:text-slate-200 underline decoration-dotted"
+          className="text-tx3 hover:text-tx2 font-mono underline decoration-dotted transition-colors"
           title="Return the model to the orientation it was imported in."
         >
           reset
         </button>
       </div>
 
-      {/* Snap buttons: world-space ±90 around each axis. Accumulate. */}
       <div className="grid grid-cols-3 gap-1.5">
         {AXES.map((axis) => (
           <div key={axis} className="flex flex-col gap-1">
-            <span className="text-slate-500 text-center uppercase">{axis}</span>
+            <span className="text-tx3 font-mono text-center uppercase">{axis}</span>
             <div className="flex gap-1">
               <button
                 type="button"
                 onClick={() => handleSnap(axis, -90)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200 font-mono"
+                className="flex-1 py-2 bg-panel2 hover:bg-panel3 border border-line2 rounded text-tx2 font-mono transition-colors"
                 title={`Rotate -90° about world ${axis.toUpperCase()}.`}
               >
                 -90
@@ -95,7 +86,7 @@ export function RotationControls() {
               <button
                 type="button"
                 onClick={() => handleSnap(axis, 90)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-slate-200 font-mono"
+                className="flex-1 py-2 bg-panel2 hover:bg-panel3 border border-line2 rounded text-tx2 font-mono transition-colors"
                 title={`Rotate +90° about world ${axis.toUpperCase()}.`}
               >
                 +90
@@ -105,23 +96,20 @@ export function RotationControls() {
         ))}
       </div>
 
-      {/* Numeric XYZ degree inputs. Editing replaces the quaternion via the
-          XYZ Euler decomposition of the current orientation. */}
       <div className="grid grid-cols-3 gap-2 pt-1">
         {AXES.map((axis, i) => (
           <label key={axis} className="flex flex-col gap-1">
-            <span className="text-slate-500">{axis.toUpperCase()} (deg)</span>
+            <span className="text-tx3 font-mono">{axis.toUpperCase()} (deg)</span>
             <input
               type="number"
               step="1"
               value={Number(eulerDeg[i].toFixed(2))}
               onChange={(e) => handleEulerEdit(axis, e.target.value)}
-              className="bg-slate-800 border border-slate-700 rounded px-2 py-2 text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              className="bg-panel2 border border-line2 rounded px-2 py-1.5 text-tx2 font-mono focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </label>
         ))}
       </div>
-
     </div>
   );
 }

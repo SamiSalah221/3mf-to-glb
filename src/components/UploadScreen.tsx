@@ -2,9 +2,7 @@ import { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useAppStore } from '../store/useAppStore';
 import { parse3MF } from '../lib/parse3MF';
-// Fetched on demand (not bundled) so the 19MB owl never ships in dist/.
-// raw.githubusercontent serves Access-Control-Allow-Origin: *, so this fetch
-// works from the Pages origin.
+
 const U1_SAMPLE_URL =
   'https://raw.githubusercontent.com/SamiSalah221/3mf-to-glb/master/samples/watchful-owl.3mf';
 
@@ -56,36 +54,53 @@ export function UploadScreen() {
   });
 
   return (
-    <div className="h-full flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-      <div className="flex flex-col items-center gap-4">
+    <div className="h-full flex items-center justify-center bg-bg">
+      <div className="flex flex-col items-center gap-6">
+        {/* Drop zone card */}
         <div
           {...getRootProps()}
-          className={`w-[560px] max-w-[90vw] border-2 border-dashed rounded-2xl p-16 text-center cursor-pointer transition-all duration-200 ${
+          className={`w-[560px] max-w-[90vw] border border-dashed rounded-xl p-14 text-center cursor-pointer transition-all duration-200 ${
             isDragActive
-              ? 'border-emerald-400 bg-emerald-400/10 scale-105'
-              : 'border-slate-500 hover:border-slate-400 hover:bg-slate-700/30'
+              ? 'border-accent bg-accent/10 scale-[1.02]'
+              : 'border-line3 bg-panel hover:border-line2 hover:bg-panel2'
           }`}
         >
           <input {...getInputProps()} />
-          <div className="text-5xl mb-6">📦</div>
-          <h1 className="text-2xl font-bold text-white mb-3">3MF Color Customizer</h1>
-          <p className="text-slate-300 text-lg mb-2">
-            {isDragActive
-              ? 'Drop your file here...'
-              : 'Drop your .3mf file here or click to browse'}
-          </p>
-          <p className="text-slate-500 text-sm">
-            Bambu Studio, OrcaSlicer, and Snapmaker U1 multi-color 3MFs supported
+
+          {/* Upload glyph */}
+          <div className="text-4xl text-tx3 mb-6 select-none">↥</div>
+
+          <h1 className="text-xl font-semibold text-tx mb-2">
+            {isDragActive ? 'Drop to open…' : 'Drop a multi-color .3mf'}
+          </h1>
+
+          <p className="text-tx3 text-xs font-mono leading-relaxed">
+            Bambu Studio · OrcaSlicer · Snapmaker U1 · parsed locally — nothing uploaded
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onTrySample}
-          className="text-sm text-emerald-300 hover:text-emerald-200 underline underline-offset-4 transition-colors"
-        >
-          Try with a sample file (no upload)
-        </button>
+        {/* Action buttons */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onTrySample}
+            className="px-4 py-2 bg-accent hover:opacity-90 text-bg text-sm font-mono font-medium rounded transition-opacity"
+          >
+            Load sample
+          </button>
+          <label className="px-4 py-2 border border-line2 hover:border-line3 text-tx2 text-sm font-mono rounded cursor-pointer transition-colors">
+            Browse file
+            <input
+              type="file"
+              accept=".3mf"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) loadBuffer(f);
+              }}
+            />
+          </label>
+        </div>
       </div>
     </div>
   );

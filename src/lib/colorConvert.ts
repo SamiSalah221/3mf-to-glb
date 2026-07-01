@@ -22,6 +22,22 @@ export function linearToHex(r: number, g: number, b: number): string {
   return `#${toHexByte(r)}${toHexByte(g)}${toHexByte(b)}`;
 }
 
+/**
+ * Blend two sRGB hex colors in LINEAR space — the physically-correct
+ * approximation of optical filament mixing (Snapmaker U1 "mixed" filaments).
+ * `ratioA` is the fraction of `hexA` (0..1); the rest is `hexB`.
+ */
+export function mixHexLinear(hexA: string, hexB: string, ratioA = 0.5): string {
+  const a = hexToLinearRGBA(hexA);
+  const b = hexToLinearRGBA(hexB);
+  const t = Math.min(1, Math.max(0, ratioA));
+  return linearToHex(
+    a[0] * t + b[0] * (1 - t),
+    a[1] * t + b[1] * (1 - t),
+    a[2] * t + b[2] * (1 - t),
+  ).toUpperCase();
+}
+
 export function hexToRgb(hex: string): { r: number; g: number; b: number } {
   return {
     r: parseInt(hex.slice(1, 3), 16) / 255,

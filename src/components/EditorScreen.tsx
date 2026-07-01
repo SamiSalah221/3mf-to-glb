@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { PlateSelector } from './ZonePanel';
+import { PlatePills, PlateSelector } from './ZonePanel';
 import { ColorPickerPanel } from './ColorPicker';
 import { ExportButton } from './ExportButton';
+import { CustomizerPanel } from './CustomizerPanel';
+import { ViewportChrome } from './ViewportChrome';
 import { DimensionsReadout } from './DimensionsReadout';
 import { ViewerCanvas } from '../viewer/ViewerCanvas';
 import { useAppStore } from '../store/useAppStore';
@@ -10,38 +12,76 @@ type MobileTab = 'view' | 'colors' | 'export';
 
 export function EditorScreen() {
   const reset = useAppStore((s) => s.reset);
+  const file = useAppStore((s) => s.file);
   const [activeTab, setActiveTab] = useState<MobileTab>('view');
 
   return (
-    <div className="h-full bg-slate-900">
-      {/* ── Desktop layout (lg+): unchanged 3-panel flex row ── */}
-      <div className="hidden lg:flex h-full">
-        <div className="w-[260px] flex-shrink-0 h-full overflow-hidden">
-          <PlateSelector />
-        </div>
-        <div className="flex-1 relative min-h-0">
-          <ViewerCanvas />
+    <div className="h-full bg-bg flex flex-col">
+      {/* ── Desktop layout (lg+): top-bar + 2-col ── */}
+      <div className="hidden lg:flex flex-col h-full">
+        {/* Top bar */}
+        <header className="flex-shrink-0 h-[54px] flex items-center gap-3 px-4 border-b border-line bg-panel z-10">
+          {/* Wordmark */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="w-7 h-7 rounded bg-accent flex items-center justify-center flex-shrink-0">
+              <span className="text-bg text-[10px] font-mono font-bold leading-none">3M</span>
+            </div>
+            <span className="text-tx text-sm font-mono font-medium whitespace-nowrap">
+              3MF<span className="text-tx3">·</span>customizer
+            </span>
+          </div>
+
+          <div className="w-px h-5 bg-line2 flex-shrink-0" />
+
+          {/* Filename */}
+          {file && (
+            <span
+              className="text-tx3 text-xs font-mono truncate max-w-[180px]"
+              title={file.name}
+            >
+              {file.name}
+            </span>
+          )}
+
+          {/* Plate pills */}
+          <PlatePills />
+
+          <div className="flex-1 min-w-0" />
+
+          {/* Privacy badge */}
+          <span className="text-tx4 text-[10px] font-mono whitespace-nowrap hidden xl:block">
+            100% in-browser · nothing uploaded
+          </span>
+
+          {/* New file */}
           <button
             onClick={reset}
-            className="absolute top-3 left-3 px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs rounded-lg backdrop-blur transition-colors"
+            className="flex-shrink-0 px-3 py-1.5 border border-line2 hover:border-line3 text-tx2 hover:text-tx text-xs font-mono rounded transition-colors"
           >
-            New File
+            New file
           </button>
-          <DimensionsReadout />
-        </div>
-        <div className="w-[280px] flex-shrink-0 h-full bg-slate-900 border-l border-slate-700 flex flex-col">
-          <div className="flex-1 overflow-y-auto">
-            <ColorPickerPanel />
+        </header>
+
+        {/* Body */}
+        <div className="flex-1 flex min-h-0">
+          {/* Viewport — radial gradient bg to contrast the model */}
+          <div
+            className="flex-1 relative min-h-0"
+            style={{ background: 'radial-gradient(ellipse at 50% 40%, #14171C 0%, #050608 100%)' }}
+          >
+            <ViewerCanvas />
+            <ViewportChrome />
           </div>
-          <div className="p-4 border-t border-slate-700">
-            <ExportButton />
+
+          {/* Right panel */}
+          <div className="w-[392px] flex-shrink-0 h-full border-l border-line overflow-hidden">
+            <CustomizerPanel />
           </div>
         </div>
       </div>
 
-      {/* ── Mobile layout (<lg): canvas always mounted, panels overlay via CSS ── */}
+      {/* ── Mobile layout (<lg): always-mounted canvas + tab overlays ── */}
       <div className="flex lg:hidden flex-col h-full">
-        {/* Canvas + overlay panels — canvas is never hidden so WebGL stays alive */}
         <div className="flex-1 relative min-h-0 touch-none">
           <ViewerCanvas />
 
@@ -50,44 +90,46 @@ export function EditorScreen() {
             <>
               <button
                 onClick={reset}
-                className="absolute top-3 left-3 px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs rounded-lg backdrop-blur transition-colors"
+                className="absolute top-3 left-3 px-2.5 py-1.5 bg-panel/80 hover:bg-panel2 border border-line text-tx2 text-xs font-mono rounded backdrop-blur transition-colors"
               >
-                New File
+                New file
               </button>
               <DimensionsReadout />
             </>
           )}
 
-          {/* Colors overlay — slides over canvas, PlateSelector takes upper flex section */}
+          {/* Colors overlay */}
           <div
-            className={`absolute inset-0 flex flex-col bg-slate-900 ${activeTab !== 'colors' ? 'hidden' : ''}`}
+            className={`absolute inset-0 flex flex-col bg-panel ${activeTab !== 'colors' ? 'hidden' : ''}`}
           >
-            <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-700">
+            <div className="min-h-0 flex-1 overflow-hidden border-b border-line">
               <PlateSelector />
             </div>
-            <div className="flex-shrink-0 overflow-y-auto max-h-[45vh]">
-              <ColorPickerPanel />
+            <div className="flex-shrink-0 overflow-y-auto cc-scroll max-h-[45vh]">
+              <div className="p-4">
+                <ColorPickerPanel />
+              </div>
             </div>
           </div>
 
           {/* Export overlay */}
           <div
-            className={`absolute inset-0 overflow-y-auto bg-slate-900 p-4 ${activeTab !== 'export' ? 'hidden' : ''}`}
+            className={`absolute inset-0 overflow-y-auto cc-scroll bg-panel p-4 ${activeTab !== 'export' ? 'hidden' : ''}`}
           >
             <ExportButton />
           </div>
         </div>
 
         {/* Bottom tab bar */}
-        <div className="flex-shrink-0 border-t border-slate-700 bg-slate-900 flex">
+        <div className="flex-shrink-0 border-t border-line bg-panel flex">
           {(['view', 'colors', 'export'] as const).map((id) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex-1 min-h-[48px] text-sm font-medium capitalize transition-colors ${
+              className={`flex-1 min-h-[48px] text-xs font-mono capitalize transition-colors ${
                 activeTab === id
-                  ? 'text-emerald-400 border-t-2 border-emerald-400 bg-slate-800'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'text-accent border-t-2 border-accent bg-panel2'
+                  : 'text-tx3 hover:text-tx2'
               }`}
             >
               {id}

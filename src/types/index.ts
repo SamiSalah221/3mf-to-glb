@@ -3,6 +3,21 @@ export interface FilamentSlot {
   index: number;         // 1-based filament index
   originalColor: string; // hex from project settings
   currentColor: string;  // user-selected hex
+  /**
+   * Present only for Snapmaker U1 virtual "mixed" filaments. The U1's
+   * multi-color tool blends two base filaments to make extra colors; such a
+   * slot's color is DERIVED from its two sources, not edited directly.
+   */
+  mix?: {
+    sources: [number, number]; // 1-based base filament indices (A, B)
+    ratioA: number;            // fraction of source A in [0, 1]
+  };
+  /**
+   * Mix slot only: the user set the main color directly, so the slot no longer
+   * follows the blend of its sources and the submains are inert ("locked").
+   * Cleared by `relinkMixedFilament` or a global reset.
+   */
+  mixOverridden?: boolean;
 }
 
 /** A single mesh chunk: geometry + its assigned filament */

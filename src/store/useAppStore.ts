@@ -1,5 +1,23 @@
 import { create } from 'zustand';
 import type { ParseResult, FilamentSlot, Dimensions, PivotMode, RotationQuat } from '../types';
+import { mixHexLinear } from '../lib/colorConvert';
+
+/**
+ * Recompute every Snapmaker U1 "mixed" slot's currentColor from its two source
+ * base filaments' current colors, so derived blends stay live as bases change.
+ */
+function withMixes(filaments: FilamentSlot[]): FilamentSlot[] {
+  const byIndex = new Map(filaments.map((f) => [f.index, f]));
+  return filaments.map((f) => {
+    if (!f.mix) return f;
+    // Overridden mixes keep their explicit color and ignore source changes.
+    if (f.mixOverridden) return f;
+    const a = byIndex.get(f.mix.sources[0]);
+    const b = byIndex.get(f.mix.sources[1]);
+    if (!a || !b) return f;
+    return { ...f, currentColor: mixHexLinear(a.currentColor, b.currentColor, f.mix.ratioA) };
+  });
+}
 
 interface AppStore {
   // File state
@@ -53,6 +71,7 @@ interface AppStore {
   setCurrentPlate: (plateId: number) => void;
   selectFilament: (index: number | null) => void;
   setFilamentColor: (index: number, color: string) => void;
+  relinkMixedFilament: (index: number) => void;
   setThinAxis: (axis: 'x' | 'y' | 'z' | null) => void;
   setDimensions: (dim: Dimensions | null) => void;
   setBboxCenterM: (c: [number, number, number] | null) => void;
@@ -102,11 +121,24 @@ export const useAppStore = create<AppStore>((set) => ({
   selectFilament: (index) => set({ selectedFilamentIndex: index }),
 
   setFilamentColor: (index, color) =>
-    set((state) => ({
-      filaments: state.filaments.map((f) =>
-        f.index === index ? { ...f, currentColor: color } : f
-      ),
-    })),
+    set((state) => {
+      const updated = state.filaments.map((f) => {
+        if (f.index !== index) return f;
+        // Directly setting a mix slot's main color detaches it from the blend
+        // and locks its submains.
+        if (f.mix) return { ...f, currentColor: color, mixOverridden: true };
+        return { ...f, currentColor: color };
+      });
+      return { filaments: withMixes(updated) };
+    }),
+
+  relinkMixedFilament: (index) =>
+    set((state) => {
+      const updated = state.filaments.map((f) =>
+        f.index === index && f.mix ? { ...f, mixOverridden: false } : f
+      );
+      return { filaments: withMixes(updated) };
+    }),
 
   setThinAxis: (axis) => set({ thinAxis: axis }),
 
@@ -124,7 +156,13 @@ export const useAppStore = create<AppStore>((set) => ({
 
   resetColors: () =>
     set((state) => ({
-      filaments: state.filaments.map((f) => ({ ...f, currentColor: f.originalColor })),
+      filaments: withMixes(
+        state.filaments.map((f) => ({
+          ...f,
+          currentColor: f.originalColor,
+          mixOverridden: false,
+        })),
+      ),
     })),
 
   reset: () =>

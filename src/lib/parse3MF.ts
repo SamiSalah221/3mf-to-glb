@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import type { ParseResult, Plate, MeshChunk, FilamentSlot, SourceUnit } from '../types/index.js';
 import { UNIT_TO_METERS } from '../types/index.js';
 import { parseXml } from './parseXml.js';
+import { mixHexLinear } from './colorConvert.js';
 
 const DEBUG = false;
 const debugLog = (...args: unknown[]) => { if (DEBUG) console.log(...args); };
@@ -90,12 +91,17 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
 
   // 2. Load filament colors from Bambu project settings
   let filamentColors: string[] = [];
+  // Snapmaker U1 "mixed" (virtual) filaments, blended from two base filaments.
+  let mixedDefsRaw = '';
   try {
     const psFile = zip.file('Metadata/project_settings.config');
     if (psFile) {
       const json = JSON.parse(await psFile.async('text'));
       if (Array.isArray(json.filament_colour)) {
         filamentColors = json.filament_colour.map((c: string) => normalizeHex(c));
+      }
+      if (typeof json.mixed_filament_definitions === 'string') {
+        mixedDefsRaw = json.mixed_filament_definitions;
       }
     }
   } catch { /* not Bambu format */ }
@@ -283,6 +289,25 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
     currentColor: color,
   }));
 
+  // 5b. Append Snapmaker U1 "mixed" filaments. Each is a virtual extruder
+  // (index = baseCount + N) whose color is a derived blend of two base
+  // filaments. The paint_color decoder already resolves these high extruder
+  // indices; without these slots they'd render gray (glbBuilder fallback).
+  if (filamentColors.length > 0 && mixedDefsRaw) {
+    for (const def of parseMixedFilamentDefs(mixedDefsRaw, filamentColors.length)) {
+      const cA = filamentColors[def.sources[0] - 1];
+      const cB = filamentColors[def.sources[1] - 1];
+      if (!cA || !cB) continue;
+      const blended = mixHexLinear(cA, cB, def.ratioA);
+      filaments.push({
+        index: def.index,
+        originalColor: blended,
+        currentColor: blended,
+        mix: { sources: def.sources, ratioA: def.ratioA },
+      });
+    }
+  }
+
   if (filaments.length === 0) {
     filaments.push({ index: 1, originalColor: '#808080', currentColor: '#808080' });
   }
@@ -374,6 +399,45 @@ function normalizeHex(color: string): string {
   if (!color.startsWith('#')) color = '#' + color;
   if (color.length > 7) color = color.slice(0, 7);
   return color.toUpperCase();
+}
+
+interface MixedFilamentDef {
+  index: number;             // resolved 1-based extruder index (baseCount + ordinal)
+  sources: [number, number]; // 1-based base filament indices (A, B)
+  ratioA: number;            // fraction of source A in [0, 1]
+}
+
+/**
+ * Parse Snapmaker U1's `mixed_filament_definitions` string. Each `;`-delimited
+ * entry is a comma list, e.g. `1,2,1,0,50,0,g,w,m2,...,u1`:
+ *   - fields[0], fields[1] = source base filament indices A, B (1-based)
+ *   - fields[4]            = mix percentage of A (defaults to 50)
+ *   - the `uN` field       = the slicer's internal virtual-filament label
+ * Only the fields we rely on are read; the rest are slicer ramming params.
+ *
+ * The resolved extruder index is the slot's POSITION in the filament list:
+ * base filaments occupy 1..baseCount, then mixes are appended in the order they
+ * appear here, so the k-th mix is `baseCount + k`. The `uN` number is NOT the
+ * slot index — it can skip values (e.g. u1..u6 then u15..u25 in the sea sample),
+ * which would leave gaps and strand paint_color references on a gray fallback.
+ */
+function parseMixedFilamentDefs(raw: string, baseCount: number): MixedFilamentDef[] {
+  const defs: MixedFilamentDef[] = [];
+  for (const entry of raw.split(';')) {
+    if (!entry.trim()) continue;
+    const fields = entry.split(',').map((f) => f.trim());
+    const a = parseInt(fields[0], 10);
+    const b = parseInt(fields[1], 10);
+    // The `uN` field marks a real mix entry; its numeric value is a label, not
+    // the slot index (see doc comment), so we only check for its presence.
+    const hasUField = fields.some((f) => /^u\d+$/i.test(f));
+    if (!hasUField || !Number.isInteger(a) || !Number.isInteger(b)) continue;
+    let pct = parseFloat(fields[4]);
+    if (!Number.isFinite(pct)) pct = 50;
+    pct = Math.min(100, Math.max(0, pct));
+    defs.push({ index: baseCount + defs.length + 1, sources: [a, b], ratioA: pct / 100 });
+  }
+  return defs;
 }
 
 /**

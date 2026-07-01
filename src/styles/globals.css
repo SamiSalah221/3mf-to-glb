@@ -1,7 +1,68 @@
 @import "tailwindcss";
 
+@theme {
+  /* Background layers */
+  --color-bg: #050608;
+  --color-panel: #101216;
+  --color-panel2: #14171C;
+  --color-panel3: #191D23;
+
+  /* Border lines */
+  --color-line: #22262D;
+  --color-line2: #2C313A;
+  --color-line3: #383F4A;
+
+  /* Text */
+  --color-tx: #E8EAEE;
+  --color-tx2: #9BA2AC;
+  --color-tx3: #5A616C;
+  --color-tx4: #3E444E;
+
+  /* Accent */
+  --color-accent: #B8DE4A;
+
+  /* Fonts */
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
   overflow: hidden;
+  background-color: #050608;
+  font-family: var(--font-sans);
+  color: #E8EAEE;
+}
+
+/* Thin scrollbar helper */
+.cc-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #22262D transparent;
+}
+.cc-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.cc-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cc-scroll::-webkit-scrollbar-thumb {
+  background: #22262D;
+  border-radius: 2px;
+}
+
+/* Keyframes */
+@keyframes ccpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes ccblink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes ccsheen {
+  0% { transform: translateX(-100%) skewX(-15deg); }
+  100% { transform: translateX(200%) skewX(-15deg); }
 }
