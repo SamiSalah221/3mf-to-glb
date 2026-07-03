@@ -34,3 +34,8 @@ dist-ssr
 !/public/**/*.png
 # Local AI-assistant context file (not for the repo)
 /CLAUDE.md
+
+# Private / local-only docs (never publish)
+/docs/OUTREACH.md
+/docs/launch/
+/HANDOFF.md

@@ -75,17 +75,24 @@ no vendor lock-in.
 
 Every other 3MF-to-mesh converter I've found throws the paint data away —
 because the per-face color encoding Bambu Studio and its forks use is
-**undocumented**. There's no public spec. To make color survive the trip to
-GLB, the format had to be reverse-engineered first.
+**undocumented**, and Snapmaker U1's Full Spectrum mixed-filament blends are a
+second undocumented layer on top of that. There's no public spec for either.
+To make color survive the trip to GLB, both formats had to be
+reverse-engineered first.
 
-It's a nibble-packed recursive triangle-subdivision tree, read right-to-left,
-with state-overflow encoding once you're past 4 extruders. That decoder —
-including the subtle plurality-voting rule that avoids over-paint seams at
-subdivision boundaries — is
+The per-face format is a nibble-packed recursive triangle-subdivision tree,
+read right-to-left, with state-overflow encoding once you're past 4
+extruders. That decoder — including the subtle plurality-voting rule that
+avoids over-paint seams at subdivision boundaries — is
 [fully documented, down to the bit level](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
-That's the actual moat here: once color survives the conversion, everything
-else — live recoloring, true-size AR, re-tinted 3MF export — is just what you
-can finally *do* with a print you can now see before you make it.
+Full Spectrum mixed filaments are virtual extruders whose color is a pigment
+blend of two physical ones, defined in a packed row grammar with enumeration
+rules that silently reassign painted faces if you get them wrong — see
+[`docs/SNAPMAKER_FULL_SPECTRUM.md`](./docs/SNAPMAKER_FULL_SPECTRUM.md) and the
+write-up below. That's the actual moat here: once color survives the
+conversion, everything else — live recoloring, true-size AR, re-tinted 3MF
+export — is just what you can finally *do* with a print you can now see
+before you make it.
 
 ## Features
 
@@ -245,6 +252,44 @@ known-colored meshes and re-implemented in TypeScript.
 
 The full technical spec lives in
 [`docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md`](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
+
+### Decoding U1 Full Spectrum mixed filaments
+
+Snapmaker U1 Full Spectrum projects add a second layer on top of the shared
+paint-tree encoding: **mixed filaments**, virtual extruders whose color is a
+pigment blend of two physical filaments. These are defined in
+`project_settings.config` under `mixed_filament_definitions` — a `;`/`,`-packed
+row grammar (15+ fields in the modern dialect, 4 in the legacy one) with no
+public documentation. It was decoded from the open
+[ratdoux/OrcaSlicer-FullSpectrum](https://github.com/ratdoux/OrcaSlicer-FullSpectrum)
+fork's C++ (`MixedFilament.{hpp,cpp}`) and validated against real U1 sample
+files.
+
+Getting it right required matching a few non-obvious rules the slicer itself
+enforces:
+
+- **Virtual extruder ids count only enabled, non-deleted rows.** The slicer's
+  `mixed_index_from_filament_id` skips disabled rows and `d1`-tombstoned rows
+  entirely — they consume no index. One of this project's U1 sample files
+  leads with 6 disabled tombstone rows; enumerating over every row instead of
+  just the surviving ones silently reassigns roughly 84,000 painted faces to
+  the wrong blend recipe.
+- **`mix_b_percent` is component *B*'s share, not A's** (`ratioA = (100 −
+  mix_b) / 100`), and an `r<k>/<wA>/<wB>` token overrides that percentage with
+  explicit weights. `u<N>` is a persistent label, not a slot index — it can
+  skip values.
+- **Blending uses a pigment-mixing model, not a linear-RGB average.** The
+  slicer runs blends through `FilamentMixer`, a degree-4 polynomial
+  approximating Mixbox, ported to
+  [`src/lib/filamentMixer.ts`](./src/lib/filamentMixer.ts). Navy + yellow
+  renders as the green the slicer actually shows; a naive linear-RGB lerp
+  gives a muddy khaki instead.
+
+Both U1 sample fixtures in [`samples/`](./samples) exercise this path, and
+`scripts/test-roundtrip.mjs` asserts specific resolved blend ratios in CI on
+every PR. Full write-up (row grammar, field-by-field semantics, and the
+scope of what's still unimplemented) in
+[`docs/SNAPMAKER_FULL_SPECTRUM.md`](./docs/SNAPMAKER_FULL_SPECTRUM.md).
 
 ### Z-plane triangle clipping
 
