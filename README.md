@@ -1,4 +1,9 @@
-# 3MF Color Customizer
+# Printproof
+
+**See your print before you print it.**
+
+The color-preserving `.3mf` → GLB converter — recolor, preview true-size in
+AR, and export, all in your browser.
 
 **When you convert a multi-color `.3mf` to mesh, most converters export a bare
 geometry and discard the slicer's paint data. As far as I can find, this is
@@ -29,34 +34,35 @@ OrcaSlicer, or Snapmaker U1 file; they share the same on-disk encoding.
 **→ <https://samisalah221.github.io/3mf-to-glb/>**
 
 No sign-up, no upload. If you don't have a `.3mf` handy, hit
-**"Try with a Snapmaker U1 / OrcaSlicer sample"** on the upload screen, or
-grab one of the fixtures in [`samples/`](./samples) and drop it on the page.
+**"Try sample · owl (Bambu)"** or **"Try sample · sea slug (U1)"** on the
+upload screen, or grab one of the fixtures in [`samples/`](./samples) and
+drop it on the page.
 
 > **Snapmaker U1 Innovation Fund submission:** project description and
 > checklist → [`SNAPMAKER_FUND.md`](./SNAPMAKER_FUND.md).
 
 ## Why this project exists
 
-Color data in modern multi-color 3D printing is increasingly trapped inside
-**vendor-specific slicer extensions** layered on top of the open
-[ISO/IEC 14739 3MF](https://3mf.io/) container. Slicers like Bambu Studio,
-OrcaSlicer, and Snapmaker U1 offer increasingly powerful color authoring
-tools (per-face painters, gradient fills, image projection), but once a
-multi-color print is sliced, the color information is effectively stuck
-inside the slicer file. You can't preview the recolored print on a product
-page, you can't share it in AR, you can't iterate the palette without
-reopening the slicer, and you can't hand the model to a designer in Blender.
+Slicers like Bambu Studio, OrcaSlicer, and Snapmaker U1 offer increasingly
+powerful color authoring tools — per-face painters, gradient fills, image
+projection. But once a multi-color print is sliced, that color data is
+effectively stuck inside the slicer file. You can't preview the recolored
+print on a product page, you can't share it in AR, you can't iterate the
+palette without reopening the slicer, and you can't hand the model to a
+designer in Blender. There was no way to actually **see** a print — in your
+colors, at true size, in your own space — before committing filament to it.
 
-This project liberates that data. It parses the open 3MF archive, decodes
-the proprietary per-face color extensions on top of it, lets you recolor
-zones in a browser viewport, and emits open formats so the model can move
-freely through the rest of the 3D ecosystem:
+This project exists to close that gap. It parses the open 3MF archive,
+decodes the proprietary per-face color extensions layered on top of it, lets
+you recolor zones live in a browser viewport and preview the result in AR,
+and emits open formats so the model can move freely through the rest of the
+3D ecosystem:
 
 - **[Khronos glTF / GLB](https://www.khronos.org/gltf/)** for Blender, Three.js,
   Unity, `<model-viewer>`, and product pages.
 - **USDZ** for Apple Quick Look and iOS AR.
 - **3MF** with refreshed filament colors so the file drops straight back into
-  Snapmaker Orca / OrcaSlicer and slices.
+  OrcaSlicer / Snapmaker U1 and slices.
 
 It's built in the same spirit as
 [OrcaSlicer](https://github.com/SoftFever/OrcaSlicer),
@@ -64,6 +70,22 @@ It's built in the same spirit as
 [Moonraker](https://github.com/Arksine/moonraker), and
 [Fluidd](https://docs.fluidd.xyz/): open code, open formats, no telemetry,
 no vendor lock-in.
+
+## Why nothing else does this
+
+Every other 3MF-to-mesh converter I've found throws the paint data away —
+because the per-face color encoding Bambu Studio and its forks use is
+**undocumented**. There's no public spec. To make color survive the trip to
+GLB, the format had to be reverse-engineered first.
+
+It's a nibble-packed recursive triangle-subdivision tree, read right-to-left,
+with state-overflow encoding once you're past 4 extruders. That decoder —
+including the subtle plurality-voting rule that avoids over-paint seams at
+subdivision boundaries — is
+[fully documented, down to the bit level](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
+That's the actual moat here: once color survives the conversion, everything
+else — live recoloring, true-size AR, re-tinted 3MF export — is just what you
+can finally *do* with a print you can now see before you make it.
 
 ## Features
 
@@ -74,6 +96,13 @@ no vendor lock-in.
 - **Handles layer-mode coloring**, including U1 Full Spectrum gradients and
   Bambu's MultiAsSingle mode, via Z-plane triangle clipping. Tool-change
   G-code becomes real geometry zones with no slicer in the loop.
+- **Snapmaker U1 Full Spectrum mixed filaments.** Parses `mixed_filament_definitions`
+  virtual extruders (pigment blends of two physical filaments), enumerates
+  only enabled/non-deleted rows the way the slicer itself does, and blends
+  colors through a pigment-mixing model rather than naive linear-RGB
+  averaging — so a navy + yellow blend renders the actual green the slicer
+  would produce, not a muddy average. See
+  [`docs/SNAPMAKER_FULL_SPECTRUM.md`](./docs/SNAPMAKER_FULL_SPECTRUM.md).
 - **Interactive 3D editor.** Recolor any zone with a color picker; changes
   update live in the Three.js viewport.
 - **PBR GLB export.** One glTF material per color zone, correct sRGB to
@@ -82,8 +111,9 @@ no vendor lock-in.
   colors, geometry and `paint_color` zones intact. The output drops back
   into OrcaSlicer / Snapmaker U1 and slices.
 - **USDZ export and View-in-AR.** Preview the recolored model in iOS Quick
-  Look (USDZ) or Android Scene Viewer (GLB) from the live demo, fully
-  client-side. Useful for previewing a print before you spend filament.
+  Look (USDZ) or an in-page WebXR session on Android (GLB via
+  `<model-viewer>`) from the live demo, fully client-side. See your print
+  at true size in your own room before you spend filament.
 - **Real-world scale.** The `<model unit>` from the source 3MF is parsed
   (micron, millimeter, centimeter, inch, foot, meter), baked into the
   exported vertex positions in meters, and surfaced as `asset.extras` on
@@ -270,30 +300,36 @@ turning each layer-range into an independent colored zone.
 
 Already shipped:
 
-- Open browser-based color customizer with face-on viewport, per-zone color
-  picker, and live recoloring. Tone-mapping and Environment IBL pinned off so
-  the picked hex is the rendered hex.
+- Open browser-based preview and recolor tool with a face-on viewport,
+  per-zone color picker, and live recoloring. Tone-mapping and Environment
+  IBL pinned off so the picked hex is the rendered hex.
 - Reverse-engineered decoder for the Bambu / OrcaSlicer / Snapmaker U1
   `paint_color` per-face subdivision tree. Full spec at
   [`docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md`](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
 - Layer-mode coloring via Z-plane triangle clipping. Covers Snapmaker U1
   Full Spectrum gradients and Bambu's MultiAsSingle mode without a slicer.
+- Snapmaker U1 Full Spectrum mixed-filament support: virtual extruder
+  enumeration matching the slicer's own enabled/non-deleted row rules, and
+  pigment-model color blending instead of linear-RGB averaging. See
+  [`docs/SNAPMAKER_FULL_SPECTRUM.md`](./docs/SNAPMAKER_FULL_SPECTRUM.md).
 - Headless TypeScript library (`3mf-to-glb`) usable from Node and the browser,
   plus a `3mf-to-glb` Node CLI for batch jobs and build pipelines.
 - 3MF re-tint round-trip: re-export the source archive with new filament
   colors and have it slice cleanly in OrcaSlicer / Snapmaker U1.
-- USDZ export and a platform-aware "View in AR" launcher (Quick Look on iOS,
-  Scene Viewer on Android, GLB download on desktop). True-size AR: the
-  source 3MF unit is baked into the exported vertex positions in meters,
-  Scene Viewer is launched with `resizable=false`, and Quick Look with
-  `allowsContentScaling=0`.
+- USDZ export and a platform-aware "View in AR" launcher: Quick Look on iOS
+  (USDZ, `allowsContentScaling=0`), an in-page WebXR session on Android via
+  `<model-viewer ar-scale="fixed">`, and a GLB download on desktop. True-size
+  AR: the source 3MF unit is baked into the exported vertex positions in
+  meters, so AR previews show true print size, not a pinch-zoomable
+  cartoon.
 - Configurable export pivot and export-time reorientation: choose where the
   model origin sits (base-center, bbox-center, centroid, original, or a custom
   mm offset) and rotate with world-axis ±90° snaps or numeric XYZ degrees. Both
   bake into the GLB/USDZ vertex positions, are recorded in `asset.extras`, and
   are exposed on the CLI as `--pivot` and `--rotation`.
-- One-click "Try with U1 sample" entry point on the live demo and a curated
-  set of multi-color 3MF fixtures in [`samples/`](./samples).
+- One-click sample loading on the live demo — a Bambu Studio fixture and a
+  Snapmaker U1 fixture — plus a curated set of multi-color 3MF fixtures in
+  [`samples/`](./samples).
 - CI (lint, web build, library build, CLI smoke, four-sample round-trip) on
   every PR.
 

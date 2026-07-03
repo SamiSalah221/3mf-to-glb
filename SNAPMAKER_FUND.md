@@ -1,35 +1,40 @@
-# Snapmaker U1 Innovation Fund: 3MF Color Customizer
+# Snapmaker U1 Innovation Fund: Printproof
 
-> An open browser-based color and orientation tool for the Snapmaker U1
-> multi-color ecosystem. Recolor any zone live in 3D, adjust orientation
-> with ±90° snap controls or free Euler inputs, then export a color-accurate
-> GLB for the web, USDZ for iOS Quick Look, Scene Viewer for Android AR, or
-> a re-tinted `.3mf` that drops straight back into OrcaSlicer / Snapmaker U1.
-> 100% client-side, mobile-ready. MIT.
+> See your print before you print it. An open browser-based color and
+> orientation tool for the Snapmaker U1 multi-color ecosystem, including
+> native support for U1 Full Spectrum mixed-filament blends. Recolor any
+> zone live in 3D, adjust orientation with ±90° snap controls or free Euler
+> inputs, then export a color-accurate GLB for the web, USDZ for iOS Quick
+> Look, an in-page WebXR AR session for Android, or a re-tinted `.3mf` that
+> drops straight back into OrcaSlicer / Snapmaker U1. 100% client-side,
+> mobile-ready. MIT.
 
 - **Submitted to:** Snapmaker U1 Innovation Fund Open Competition, Phase 1
-- **Author:** Sami Salah  (independent)
+- **Author:** Sami Salah (independent)
 - **License:** MIT
 - **Source:** <https://github.com/SamiSalah221/3mf-to-glb>
 - **Live demo:** <https://samisalah221.github.io/3mf-to-glb/>
-- **One-click U1 sample on the demo:** "Try with a Snapmaker U1 / OrcaSlicer
-  sample" on the upload screen. No upload, no signup.
+- **One-click U1 sample on the demo:** **"Try sample · sea slug (U1)"** on
+  the upload screen. No upload, no signup.
 
 ## What it is
 
 Modern multi-color slicers — Bambu Studio, OrcaSlicer, and the Snapmaker U1
 among them — offer powerful color authoring tools (per-face painters,
-gradient fills, image projection). Once a multi-color print is sliced,
-though, the color information is effectively trapped inside the slicer file.
-You can't preview the recolored print on a product page, you can't ship it
-to a Blender artist, you can't share it on a Reddit thread as a glTF, and
-you can't iterate the palette without reopening the slicer.
+gradient fills, image projection, and on the U1, Full Spectrum
+mixed-filament blending). Once a multi-color print is sliced, though, the
+color information is effectively trapped inside the slicer file. You can't
+preview the recolored print on a product page, you can't ship it to a
+Blender artist, you can't share it on a Reddit thread as a glTF, and you
+can't see what it will actually look like — at true size, in your chosen
+colors — before you commit filament to it.
 
 This project liberates that data. It does three things:
 
 1. **Reads** Snapmaker U1, OrcaSlicer, and Bambu 3MF archives, including the
-   proprietary per-face `paint_color` subdivision tree and the Z-band
-   MultiAsSingle / Full Spectrum layer-mode encoding. The decoder is
+   proprietary per-face `paint_color` subdivision tree, the Z-band
+   MultiAsSingle / Full Spectrum layer-mode encoding, and U1 **Full Spectrum
+   mixed-filament** virtual extruders. The paint_color decoder is
    reverse-engineered from the OrcaSlicer source and fully documented in
    [`docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md`](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
 2. **Recolors and reorients** every zone in an interactive browser viewport
@@ -42,7 +47,8 @@ This project liberates that data. It does three things:
 3. **Exports** in three open formats:
    - **GLB** (Khronos glTF, ISO/IEC 12113) for Blender, Unity, Three.js,
      `<model-viewer>`, and product pages.
-   - **USDZ** for Apple Quick Look and iOS AR; **Scene Viewer** for Android AR.
+   - **USDZ** for Apple Quick Look; an in-page **WebXR** session (via
+     `<model-viewer ar-scale="fixed">`) for Android AR.
    - **3MF** with refreshed filament colors so the file drops straight back
      into OrcaSlicer / Snapmaker U1 and slices.
 
@@ -50,11 +56,16 @@ The same parser is also published as a headless TypeScript library and a Node
 CLI, so it can run in build pipelines, batch jobs, server-side renderers, and
 the round-trip CI tests in this repo.
 
-**A note on scope:** The parser contains no vendor-specific code branches —
-Bambu Studio, OrcaSlicer, and Snapmaker U1 all write the same `paint_color`
-encoding, and the decoder handles all three identically. The Surface Color
-Stitch roadmap item is the one genuinely U1-adjacent feature; it is not yet
-implemented and is flagged as such in the roadmap.
+**A note on scope:** The core `paint_color` decoder contains no
+vendor-specific code branches — Bambu Studio, OrcaSlicer, and Snapmaker U1
+all write the same encoding, and the parser handles all three identically.
+**U1 Full Spectrum mixed-filament support is the genuinely U1-specific
+feature**, and it's implemented: `mixed_filament_definitions` virtual
+extruders are enumerated the way the slicer itself does (enabled +
+non-deleted rows only, tombstones skipped), and blends are rendered through
+a pigment-mixing model rather than linear-RGB averaging. Surface Color
+Stitch (image-projection color) remains on the near-term roadmap and is not
+yet implemented.
 
 **The opportunity this opens for Snapmaker:** As far as I can find, no
 consumer 3D-printer brand currently offers buyers a way to see a print at
@@ -76,9 +87,19 @@ community-endorsed workflow.
   for ≥4 extruders). No public spec exists; the implementation reconstructs
   the format from OrcaSlicer's open-source C++. Documented in
   [`3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md`](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
+- **Snapmaker U1 Full Spectrum mixed-filament support.** `mixed_filament_definitions`
+  defines virtual extruders that are pigment blends of two physical
+  filaments; the slicer only assigns virtual ids to enabled, non-deleted
+  rows, and its tombstone rows can precede real ones in the file. The parser
+  replicates that exact enumeration order rather than iterating all rows
+  naively — a naive pass shifts every painted state onto the wrong recipe.
+  Blend ratios come from `mix_b_percent` or an explicit `r<k>/<wA>/<wB>`
+  override, and colors are computed with a pigment-mixing polynomial (so
+  navy + yellow renders as green, not a muddy linear-RGB average). See
+  [`docs/SNAPMAKER_FULL_SPECTRUM.md`](./docs/SNAPMAKER_FULL_SPECTRUM.md).
 - **Z-plane triangle clipping** turns G-code tool-change metadata
-  (MultiAsSingle / Full Spectrum) into real geometry zones in the browser,
-  with progressive boundary splitting.
+  (MultiAsSingle / Full Spectrum layer bands) into real geometry zones in the
+  browser, with progressive boundary splitting.
 - **Subdivision-tree plurality voting** including the inherit state (state 0)
   to avoid the over-paint seam bug that simpler decoders hit on boundary
   triangles. Reproducible regression in [`samples/kuwait.3mf`](./samples).
@@ -92,21 +113,22 @@ community-endorsed workflow.
   OrcaSlicer / Snapmaker U1.
 - **WYSIWYG orientation export**: ±90° snap rotations and free Euler inputs
   in the Orientation panel are baked directly into vertex positions and normals
-  before serialisation. The GLB carries an identity node transform — the pose
+  before serialization. The GLB carries an identity node transform — the pose
   is geometry-level, not a scene-graph transform an AR runtime might ignore or
   override. A flat keychain lies flat in AR by default; the user presses +90°X
   to stand it up, re-exports, and the new pose is reproduced faithfully.
 - **Multi-format export** (GLB + USDZ + 3MF) and a platform-aware AR launcher
-  (Quick Look on iOS, Scene Viewer on Android, GLB download on desktop), all
-  client-side. The UI is mobile-responsive and touch-friendly, so the whole
-  workflow — load, recolor, reorient, preview in AR — works on a phone.
+  (Quick Look on iOS, an in-page WebXR session on Android via
+  `<model-viewer>`, GLB download on desktop), all client-side. The UI is
+  mobile-responsive and touch-friendly, so the whole workflow — load,
+  recolor, reorient, preview in AR — works on a phone.
 - **Real-world scale** end-to-end. The 3MF `<model unit>` is parsed (every
   legal value: micron through meter), baked into the exported vertex
   positions in meters, surfaced as `asset.extras` on the GLB, and
   cross-checked by a 100 mm-cube conformance test that asserts the exported
-  GLB bounding box is 0.1 m on each axis. Scene Viewer and Quick Look are
-  launched with their fixed-scale flags so AR previews show true print
-  size, not a pinch-zoomable cartoon.
+  GLB bounding box is 0.1 m on each axis. `<model-viewer ar-scale="fixed">`
+  and Quick Look's `allowsContentScaling=0` are used so AR previews show
+  true print size, not a pinch-zoomable cartoon.
 - **Configurable export pivot**: base-center for AR floor placement
   (default), bbox-center, area-weighted centroid, original 3MF origin, or a
   user-entered mm offset. The choice is baked into vertex positions and
@@ -142,9 +164,10 @@ community-endorsed workflow.
 The community of people who would benefit from this is concrete, not
 hypothetical:
 
-- **U1 owners** who want to share recolored print previews on Reddit,
-  Discord, Printables, and product pages without re-slicing, and who want to
-  iterate palettes for gifts and small batches in seconds.
+- **U1 owners**, including U1 Full Spectrum users, who want to share
+  recolored print previews on Reddit, Discord, Printables, and product pages
+  without re-slicing, and who want to iterate palettes and mixed-filament
+  blends for gifts and small batches in seconds.
 - **Etsy and small-batch 3D-print sellers** who need product images and
   AR previews for color variants without rendering a Blender frame per SKU.
 - **Designers handing off to print farms** who want to share a single 3MF
@@ -162,15 +185,16 @@ hypothetical:
 ## How to try it (under 60 seconds)
 
 1. Open **<https://samisalah221.github.io/3mf-to-glb/>**.
-2. Click **"Try with a Snapmaker U1 / OrcaSlicer sample"**.
-3. The watchful-owl sample loads. Click a colored zone, pick a new hex, and
-   the viewport recolors in real time.
-4. Open the **Orientation** panel and press **+90° X** to rotate the model,
-   or leave it at the default print-bed pose. The export will match exactly.
-5. Hit **Export as 3MF (re-tint)** to get a `.3mf` that slices in OrcaSlicer.
-   Hit **Export as USDZ** for iOS Quick Look. Hit **View in AR** on any phone
-   (Quick Look on iOS, Scene Viewer on Android) to drop the recolored,
-   reoriented model into your room at true print size.
+2. Click **"Try sample · sea slug (U1)"** to load a Snapmaker U1 Full
+   Spectrum fixture.
+3. The model loads. Click a colored zone, pick a new hex, and the viewport
+   recolors in real time.
+4. Open the **orient** tab and press **+90° X** to rotate the model, or
+   leave it at the default print-bed pose. The export will match exactly.
+5. Hit **3MF** in the export footer to get a `.3mf` that slices in
+   OrcaSlicer. Hit **AR** on any phone (Quick Look on iOS, an in-page WebXR
+   session on Android) to drop the recolored, reoriented model into your
+   room at true print size — or hit **Export GLB** on desktop.
 
 ## What funding unlocks (honest near-term plan)
 
@@ -195,12 +219,13 @@ Listed roughly in priority order, all documented in the repo roadmap:
 - [x] Public GitHub repo, MIT licensed.
 - [x] Working live demo, no signup, no upload.
 - [x] U1 sample loadable in one click on the demo.
+- [x] U1 Full Spectrum mixed-filament support implemented and documented.
 - [x] CI green on every PR.
 - [x] CoC, CONTRIBUTING, SECURITY in place.
 - [x] Decoder documented down to the bit level.
 - [x] Headless library + Node CLI for downstream use.
 - [x] 3MF re-tint round-trip end-to-end verified across four fixtures.
-- [x] USDZ + Scene Viewer AR launcher (iOS Quick Look + Android Scene Viewer).
+- [x] USDZ + WebXR AR launcher (iOS Quick Look + Android in-page WebXR).
 - [x] WYSIWYG orientation export — exported pose matches model view exactly.
 - [x] Mobile-responsive UI, works end-to-end on a phone.
 

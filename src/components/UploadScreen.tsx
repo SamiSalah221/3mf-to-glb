@@ -3,10 +3,17 @@ import { useDropzone } from 'react-dropzone';
 import { useAppStore } from '../store/useAppStore';
 import { parse3MF } from '../lib/parse3MF';
 
-const U1_SAMPLE_URL =
-  'https://raw.githubusercontent.com/SamiSalah221/3mf-to-glb/master/samples/watchful-owl.3mf';
+const SAMPLES_BASE_URL =
+  'https://raw.githubusercontent.com/SamiSalah221/3mf-to-glb/master/samples/';
 
-const U1_SAMPLE_NAME = 'sample.3mf';
+const SAMPLES = [
+  { label: 'Try sample · owl (Bambu)', filename: 'watchful-owl.3mf', downloadName: 'owl-sample.3mf' },
+  {
+    label: 'Try sample · sea slug (U1)',
+    filename: '海蛞蝓【项目】U1  sea.3mf',
+    downloadName: 'u1-sample.3mf',
+  },
+];
 
 export function UploadScreen() {
   const { setFile, setLoading, setError, setParsed } = useAppStore();
@@ -34,18 +41,21 @@ export function UploadScreen() {
     [loadBuffer],
   );
 
-  const onTrySample = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(U1_SAMPLE_URL);
-      if (!res.ok) throw new Error(`Sample download failed (${res.status})`);
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      const file = new File([new Uint8Array(bytes)], U1_SAMPLE_NAME, { type: 'model/3mf' });
-      await loadBuffer(file);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load sample file');
-    }
-  }, [loadBuffer, setLoading, setError]);
+  const onTrySample = useCallback(
+    async (sample: (typeof SAMPLES)[number]) => {
+      try {
+        setLoading(true);
+        const res = await fetch(SAMPLES_BASE_URL + encodeURIComponent(sample.filename));
+        if (!res.ok) throw new Error(`Sample download failed (${res.status})`);
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        const file = new File([new Uint8Array(bytes)], sample.downloadName, { type: 'model/3mf' });
+        await loadBuffer(file);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not load sample file');
+      }
+    },
+    [loadBuffer, setLoading, setError],
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -74,6 +84,10 @@ export function UploadScreen() {
             {isDragActive ? 'Drop to open…' : 'Drop a multi-color .3mf'}
           </h1>
 
+          <p className="text-tx2 text-sm mb-3">
+            See your print before you print it — colors preserved from slicer to screen to AR.
+          </p>
+
           <p className="text-tx3 text-xs font-mono leading-relaxed">
             Bambu Studio · OrcaSlicer · Snapmaker U1 · parsed locally — nothing uploaded
           </p>
@@ -81,13 +95,16 @@ export function UploadScreen() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onTrySample}
-            className="px-4 py-2 bg-accent hover:opacity-90 text-bg text-sm font-mono font-medium rounded transition-opacity"
-          >
-            Load sample
-          </button>
+          {SAMPLES.map((sample) => (
+            <button
+              key={sample.filename}
+              type="button"
+              onClick={() => onTrySample(sample)}
+              className="px-4 py-2 bg-accent hover:opacity-90 text-bg text-sm font-mono font-medium rounded transition-opacity"
+            >
+              {sample.label}
+            </button>
+          ))}
           <label className="px-4 py-2 border border-line2 hover:border-line3 text-tx2 text-sm font-mono rounded cursor-pointer transition-colors">
             Browse file
             <input

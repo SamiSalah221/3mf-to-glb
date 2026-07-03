@@ -30,6 +30,7 @@ dist-ssr
 /debug-*.mjs
 /test-*.mjs
 /*.png
+/docs/qa/*.png
 !/public/**/*.png
 # Local AI-assistant context file (not for the repo)
 /CLAUDE.md
