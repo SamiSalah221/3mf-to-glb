@@ -34,11 +34,23 @@ interface PlateInfo {
   objectIds: number[];
 }
 
+interface PartMeta {
+  id: string;       // component objectid; NOT unique when a mesh is instanced
+  extruder: number; // raw value; 0 = unassigned, inherit the object default
+  subtype: string;  // "normal_part" | "negative_part" | "modifier_part"
+}
+
 interface ObjectMeta {
   name: string;
   extruder: number; // 1-based
-  partExtruders: Map<string, number>; // partId -> extruder
-  partSubtypes: Map<string, string>; // partId -> subtype (e.g. "negative_part")
+  /**
+   * Ordered exactly as the <part> elements appear. Bambu's part list mirrors
+   * the root object's <component> list one to one, so parts must be matched by
+   * POSITION. Part ids repeat whenever the same mesh is instanced more than
+   * once (azerbaijan.3mf reuses Generic-Cube objectid 13 three times with
+   * different extruders), which an id-keyed map silently collapses.
+   */
+  parts: PartMeta[];
 }
 
 // ---- Layer color change types (Bambu "MultiAsSingle" mode) ----
@@ -123,8 +135,7 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
         const id = obj.getAttribute('id') || '';
         let name = '';
         let extruder = 1;
-        const partExtruders = new Map<string, number>();
-        const partSubtypes = new Map<string, string>();
+        const parts: PartMeta[] = [];
 
         for (let j = 0; j < obj.children.length; j++) {
           const el = obj.children[j];
@@ -135,17 +146,18 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
           if (el.tagName === 'part') {
             const partId = el.getAttribute('id') || '';
             const subtype = el.getAttribute('subtype') || 'normal_part';
-            partSubtypes.set(partId, subtype);
+            let partExtruder = 0; // 0 = unassigned, resolved against objExtruder later
             const partMetas = el.getElementsByTagName('metadata');
             for (let k = 0; k < partMetas.length; k++) {
               if (partMetas[k].getAttribute('key') === 'extruder') {
-                partExtruders.set(partId, parseInt(partMetas[k].getAttribute('value') || '1', 10));
+                partExtruder = parseInt(partMetas[k].getAttribute('value') || '0', 10);
               }
             }
+            parts.push({ id: partId, extruder: partExtruder, subtype });
           }
         }
 
-        objectMeta.set(id, { name, extruder, partExtruders, partSubtypes });
+        objectMeta.set(id, { name, extruder, parts });
       }
 
       // Parse plate assignments
@@ -235,25 +247,34 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
       : obj.getElementsByTagName('component');
 
     if (components.length > 0) {
+      const parts = meta?.parts ?? [];
+
       for (let ci = 0; ci < components.length; ci++) {
         const comp = components[ci];
         const compPath = comp.getAttributeNS(pNs, 'path') || comp.getAttribute('p:path') || '';
         const compObjId = parseInt(comp.getAttribute('objectid') || '0', 10);
 
+        // Bambu's <part> list mirrors this object's <component> list one to one,
+        // so the ci-th part describes the ci-th component. Matching by part id
+        // instead collapses repeated instances of the same mesh onto whichever
+        // extruder was listed last. See azerbaijan.3mf (Generic-Cube x3).
+        // Fall back to id lookup only when the two lists disagree in length.
+        const part = parts.length === components.length
+          ? parts[ci]
+          : parts.find((p) => p.id === String(compObjId));
+
         // Skip negative/modifier parts (boolean cutters, not visible geometry)
-        const partSubtype = meta?.partSubtypes.get(String(compObjId));
-        if (partSubtype === 'negative_part' || partSubtype === 'modifier_part') continue;
+        if (part?.subtype === 'negative_part' || part?.subtype === 'modifier_part') continue;
 
         const compTStr = comp.getAttribute('transform');
         const compTransform = compTStr ? parseTransform(compTStr) : null;
         const finalTransform = combineTransforms(buildTransform, compTransform);
 
-        // Resolve part extruder: check model_settings partExtruders by compObjId.
         // Bambu encodes "unassigned, inherit from object default" as extruder=0
         // (e.g. Generic-Cube anchor parts on Image-to-Keychain templates).
         // We must NOT pass 0 through — it produces filamentIndex=0 chunks that
         // render gray and are skipped by the reactive recolor pass. See Turkey.3mf.
-        const rawPartExt = meta?.partExtruders.get(String(compObjId));
+        const rawPartExt = part?.extruder;
         const partExtruder = rawPartExt && rawPartExt > 0 ? rawPartExt : objExtruder;
 
         const normalizedPath = compPath.startsWith('/') ? compPath.slice(1) : compPath;
