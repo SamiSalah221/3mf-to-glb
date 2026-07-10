@@ -58,7 +58,7 @@ export function CustomizerPanel() {
   const pivotMode = useAppStore((s) => s.pivotMode);
   const setPivotMode = useAppStore((s) => s.setPivotMode);
 
-  const { handleExportGLB, handleExport3MF, handleViewInAR, arLabel, busy, file } =
+  const { handleExportGLB, handleExportOBJ, handleExport3MF, handleViewInAR, arLabel, busy, file } =
     useExportActions();
 
   // Simulated progress + success toast
@@ -278,6 +278,14 @@ export function CustomizerPanel() {
             className="px-3.5 py-2.5 bg-panel2 hover:bg-panel3 disabled:opacity-40 border border-line2 text-tx2 text-xs font-mono rounded transition-colors"
           >
             AR
+          </button>
+          <button
+            onClick={() => runExport('OBJ', handleExportOBJ)}
+            disabled={busy}
+            title="Wavefront OBJ plus its MTL, zipped together. The colors live in the MTL, so keep both files side by side when you import."
+            className="px-3.5 py-2.5 bg-panel2 hover:bg-panel3 disabled:opacity-40 border border-line2 text-tx2 text-xs font-mono rounded transition-colors"
+          >
+            OBJ
           </button>
           <button
             onClick={() => runExport('3MF', handleExport3MF)}

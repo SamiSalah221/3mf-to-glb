@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { exportGLB, triggerBrowserDownload, buildGLBBytes, getExportScene } from '../lib/glbExporter';
 import { buildUSDZBytes } from '../lib/usdzExporter';
+import { buildOBJZipBytes } from '../lib/objExporter';
 import { exportRecolored3MF } from '../lib/build3MF';
 import { detectArPlatform, launchQuickLook, launchWebXR, type ArPlatform } from '../lib/arLauncher';
 import { useAppStore } from '../store/useAppStore';
 
-type ExportingState = null | 'glb' | '3mf' | 'ar';
+type ExportingState = null | 'glb' | 'obj' | '3mf' | 'ar';
 
 export function useExportActions() {
   const [exporting, setExporting] = useState<ExportingState>(null);
@@ -26,6 +27,23 @@ export function useExportActions() {
     } catch (err) {
       console.error('GLB export failed:', err);
       window.alert('GLB export failed. See console for details.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExportOBJ = async () => {
+    const scene = getExportScene();
+    if (!scene) return;
+    setExporting('obj');
+    try {
+      // The .obj and its .mtl have to stay together: the colors live in the
+      // .mtl and the .obj references it by filename.
+      const bytes = await buildOBJZipBytes(scene, baseName);
+      triggerBrowserDownload(bytes, `${baseName}-obj.zip`, 'application/zip');
+    } catch (err) {
+      console.error('OBJ export failed:', err);
+      window.alert('OBJ export failed. See console for details.');
     } finally {
       setExporting(null);
     }
@@ -83,6 +101,7 @@ export function useExportActions() {
 
   return {
     handleExportGLB,
+    handleExportOBJ,
     handleExport3MF,
     handleViewInAR,
     arLabel,

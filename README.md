@@ -9,7 +9,7 @@ AR, and export, all in your browser.
 geometry and discard the slicer's paint data. As far as I can find, this is
 the first tool that carries those per-face color zones all the way to GLB —
 then lets you recolor them in the browser, reorient and scale the model for
-AR, and export GLB / USDZ / a re-tinted `.3mf`. Works with any Bambu Studio,
+AR, and export GLB / USDZ / OBJ / a re-tinted `.3mf`. Works with any Bambu Studio,
 OrcaSlicer, or Snapmaker U1 file; they share the same on-disk encoding.
 100% client-side, MIT-licensed, no telemetry.**
 
@@ -100,6 +100,12 @@ before you make it.
   OrcaSlicer, and Snapmaker U1: a nibble-packed recursive
   triangle-subdivision tree, reverse-engineered and
   [fully documented](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
+- **Rebuilds painted geometry, rather than approximating it.** Each painted
+  triangle is subdivided exactly the way the slicer subdivides it, so a
+  brush stroke covering four percent of one triangle survives as four
+  percent of one triangle. Tools that roll a triangle up to a single
+  "dominant" color silently erase small paint on coarse meshes and can only
+  place a color boundary along an edge that already exists in the mesh.
 - **Handles layer-mode coloring**, including U1 Full Spectrum gradients and
   Bambu's MultiAsSingle mode, via Z-plane triangle clipping. Tool-change
   G-code becomes real geometry zones with no slicer in the loop.
@@ -114,6 +120,11 @@ before you make it.
   update live in the Three.js viewport.
 - **PBR GLB export.** One glTF material per color zone, correct sRGB to
   linear conversion, ready for Blender, Unity, WebGL, and product pages.
+- **OBJ + MTL export.** The same scene as Wavefront OBJ with a companion
+  MTL, one material per filament, zipped together in the browser and written
+  as a sibling pair by the CLI. Vertices are in millimeters and `Kd` values
+  are converted back to sRGB, so the color you picked is the color that
+  loads.
 - **3MF re-tint round-trip.** Re-emit the source 3MF with new filament
   colors, geometry and `paint_color` zones intact. The output drops back
   into OrcaSlicer / Snapmaker U1 and slices.
@@ -150,15 +161,15 @@ before you make it.
 
 ```
 ┌────────────┐     ┌──────────────┐     ┌─────────────────────┐     ┌─────────┐
-│ Upload 3MF │ ──▶ │  Parse OPC   │ ──▶ │ Decode colors +     │ ──▶ │ Render  │
-│  (ZIP)     │     │  + XML files │     │ clip Z-plane zones  │     │ 3D view │
+│ Upload 3MF │ ──▶ │  Parse OPC   │ ──▶ │ Subdivide painted   │ ──▶ │ Render  │
+│  (ZIP)     │     │  + XML files │     │ tris, clip Z zones  │     │ 3D view │
 └────────────┘     └──────────────┘     └─────────────────────┘     └────┬────┘
                                                                          │
                                                                          ▼
-                                                                  ┌─────────────┐
-                                                                  │ Export GLB  │
-                                                                  │ (download)  │
-                                                                  └─────────────┘
+                                                            ┌─────────────────────┐
+                                                            │ Export GLB / USDZ / │
+                                                            │ OBJ+MTL / 3MF       │
+                                                            └─────────────────────┘
 ```
 
 ## Quick start (local dev)
@@ -195,13 +206,16 @@ npx 3mf-to-glb model.3mf --plate 2 -o plate2.glb
 
 # Reorient a Z-up print to glTF Y-up while exporting:
 npx 3mf-to-glb model.3mf --rotation "90,0,0" -o yup.glb
+
+# Write Wavefront OBJ instead. The matching model.mtl lands beside it:
+npx 3mf-to-glb model.3mf -o model.obj
 ```
 
 Flags:
 
 | Flag | Description |
 |------|-------------|
-| `-o, --output <file>` | Output GLB path. Defaults to the input name with `.glb`. |
+| `-o, --output <file>` | Output path. Defaults to the input name with `.glb`. An `.obj` extension writes OBJ plus a sibling `.mtl`. |
 | `--plate <id>` | 1-based plate id (matches Bambu / Orca / U1 `plater_id`). Defaults to the first plate. |
 | `--recolor <map>` | Comma-separated `index=hex` pairs applied before export. Hex may include or omit the leading `#`. |
 | `--pivot <mode>` | Export pivot: `base-center` (default), `bbox-center`, `centroid`, `original`, `custom`. |
@@ -237,7 +251,13 @@ await writeFile('out.glb', bytes);
 ```
 
 For the one-shot common case there is also a `convertToGLB(buffer, options)`
-convenience that wraps the four calls above.
+convenience that wraps the four calls above, and `convertToOBJ(buffer, options)`
+which returns the OBJ and MTL bodies as strings.
+
+Swap the last two lines for `buildOBJ(scene)` to get `{ obj, mtl }` instead, or
+`buildOBJZipBytes(scene, 'model')` to get both files in one zip. Write the pair
+side by side: the `.obj` holds no colors of its own, only an `mtllib` reference
+to the `.mtl` next to it.
 
 ## Under the hood
 
@@ -252,6 +272,47 @@ known-colored meshes and re-implemented in TypeScript.
 
 The full technical spec lives in
 [`docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md`](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
+
+### Subdividing painted triangles instead of voting on them
+
+Decoding the tree is only half the problem. The obvious shortcut is to walk a
+triangle's tree, take whichever color covers most of it, and paint the whole
+triangle that color. That shortcut is wrong in two ways, and both are visible:
+
+- On a coarse mesh the paint disappears. A cube face is two triangles; text
+  written across it covers a few percent of each. "Mostly unpainted" wins
+  every vote, and the cube renders blank.
+- A color boundary can only ever land on an edge the mesh already has, so
+  painted regions bleed into their neighbours along the original
+  triangulation. This produced a white-seam artifact that took a while to
+  attribute to the decoder rather than the renderer.
+
+So the parser reproduces the slicer's own subdivision: rotate the triangle so
+the encoded "special side" leads, insert exact edge midpoints, and emit the
+children in the same winding and the same order the slicer wrote them (they
+are serialized last-child-first, a detail a vote can ignore and geometry
+cannot). Midpoints are deduplicated across the mesh, so triangles that share
+an edge share the vertex on it and the surface stays watertight. A leaf of the
+tree becomes a triangle, and its color zone is exact.
+
+Subdivision is bounded rather than unbounded: once a sub-triangle's longest
+edge falls below 0.4% of the model's bounding-box diagonal, the rest of the
+subtree collapses to whichever color covers the most area. That threshold is
+roughly one nozzle width on a typical model, so nothing printable is lost.
+Without it, a densely-tessellated model turns into detail no printer could
+resolve: one 896k-triangle test model expanded to 18.7 million triangles and
+about a gigabyte of vertex data before the cutoff, and one million after.
+
+### Instanced parts and their extruders
+
+A Bambu `model_settings.config` lists an object's `<part>` elements in the
+same order as that object's `<component>` elements, and identifies each part
+by the id of the mesh it points at. When a project reuses one mesh several
+times, which is exactly what "stamp this shape three times in three colors"
+produces, that id repeats. Keying part metadata on the id therefore keeps
+only the last instance and paints every copy the same color. The parts are
+matched positionally instead, with an id lookup kept as a fallback for files
+where the two lists disagree.
 
 ### Decoding U1 Full Spectrum mixed filaments
 
@@ -328,10 +389,11 @@ turning each layer-range into an independent colored zone.
 3mf-to-glb/
 ├── src/
 │   ├── lib/              # Core parsing and conversion logic
-│   │   ├── parse3MF.ts          # 3MF ZIP/XML parsing + paint_color decoder
+│   │   ├── parse3MF.ts          # 3MF ZIP/XML parsing + paint_color subdivision
 │   │   ├── colorConvert.ts      # sRGB ↔ linear color space conversion
 │   │   ├── glbBuilder.ts        # Geometry → glTF document construction
-│   │   └── glbExporter.ts       # GLB binary export
+│   │   ├── glbExporter.ts       # GLB binary export
+│   │   └── objExporter.ts       # Wavefront OBJ + MTL export
 │   ├── components/       # React UI
 │   ├── viewer/           # Three.js / R3F scene
 │   ├── store/            # Zustand state
@@ -377,6 +439,15 @@ Already shipped:
   [`samples/`](./samples).
 - CI (lint, web build, library build, CLI smoke, four-sample round-trip) on
   every PR.
+- Exact geometric subdivision of painted triangles, replacing the per-triangle
+  dominant-color rollup that erased small paint on coarse meshes and bled
+  color across boundaries, bounded by a printable-feature cutoff so dense
+  meshes do not explode.
+- Positional matching of `<part>` metadata to `<component>` instances, so a
+  mesh reused several times in one object keeps a different filament per copy.
+- OBJ + MTL export, zipped in the browser and written as a sibling pair by the
+  CLI (`-o model.obj`), with `Kd` converted back to sRGB and vertices in
+  millimeters.
 
 Near-term work, in rough priority order:
 

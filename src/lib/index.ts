@@ -8,6 +8,8 @@ export { parse3MF } from './parse3MF.js';
 export { buildSceneFromPlate } from './glbBuilder.js';
 export { buildGLBBytes } from './glbExporter.js';
 export { buildUSDZBytes } from './usdzExporter.js';
+export { buildOBJ, buildOBJZipBytes } from './objExporter.js';
+export type { OBJBuildOptions, OBJBuildResult } from './objExporter.js';
 export { exportRecolored3MF } from './build3MF.js';
 export {
   srgbToLinear,
@@ -45,6 +47,8 @@ import * as THREE from 'three';
 import { parse3MF } from './parse3MF.js';
 import { buildSceneFromPlate } from './glbBuilder.js';
 import { buildGLBBytes } from './glbExporter.js';
+import { buildOBJ } from './objExporter.js';
+import type { OBJBuildResult } from './objExporter.js';
 import { applyRecolor } from './recolor.js';
 import type { FilamentRecolorMap } from './recolor.js';
 import type { RotationQuat } from '../types/index.js';
@@ -79,14 +83,11 @@ export interface ConvertToGLBOptions {
   rotationEulerDeg?: [number, number, number];
 }
 
-/**
- * One-shot convenience: parse a 3MF buffer, optionally recolor filaments and
- * select a plate, and return the GLB bytes. Designed for CLI / batch use.
- */
-export async function convertToGLB(
+/** Parse, recolor, pick a plate, and build the export scene. Shared by the converters. */
+async function buildSceneFromBuffer(
   buffer: ArrayBuffer | Uint8Array,
-  opts: ConvertToGLBOptions = {},
-): Promise<Uint8Array> {
+  opts: ConvertToGLBOptions,
+): Promise<THREE.Group> {
   let parsed = await parse3MF(buffer);
   if (opts.recolor) parsed = applyRecolor(parsed, opts.recolor);
 
@@ -108,12 +109,40 @@ export async function convertToGLB(
         )
       : undefined);
 
-  const scene = buildSceneFromPlate(plate.meshChunks, parsed.filaments, {
+  return buildSceneFromPlate(plate.meshChunks, parsed.filaments, {
     unitToMeters: parsed.unitToMeters,
     sourceUnit: parsed.sourceUnit,
     pivotMode: opts.pivotMode,
     customPivotMm: opts.customPivotMm,
     rotationQuat,
   });
-  return buildGLBBytes(scene);
+}
+
+/**
+ * One-shot convenience: parse a 3MF buffer, optionally recolor filaments and
+ * select a plate, and return the GLB bytes. Designed for CLI / batch use.
+ */
+export async function convertToGLB(
+  buffer: ArrayBuffer | Uint8Array,
+  opts: ConvertToGLBOptions = {},
+): Promise<Uint8Array> {
+  return buildGLBBytes(await buildSceneFromBuffer(buffer, opts));
+}
+
+export interface ConvertToOBJOptions extends ConvertToGLBOptions {
+  /** Name written into the .obj `mtllib` line. Defaults to `model.mtl`. */
+  mtlFilename?: string;
+}
+
+/**
+ * Same as `convertToGLB`, but returns the Wavefront OBJ and MTL bodies. The
+ * caller must write both: the .obj carries no colors, only a reference to the
+ * .mtl by the name given in `mtlFilename`.
+ */
+export async function convertToOBJ(
+  buffer: ArrayBuffer | Uint8Array,
+  opts: ConvertToOBJOptions = {},
+): Promise<OBJBuildResult> {
+  const scene = await buildSceneFromBuffer(buffer, opts);
+  return buildOBJ(scene, { mtlFilename: opts.mtlFilename });
 }

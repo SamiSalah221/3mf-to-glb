@@ -3,7 +3,7 @@ import { RotationControls } from './RotationControls';
 
 /** Standalone export panel used on mobile (includes RotationControls). */
 export function ExportButton() {
-  const { handleExportGLB, handleExport3MF, handleViewInAR, arLabel, exporting, busy, file } =
+  const { handleExportGLB, handleExportOBJ, handleExport3MF, handleViewInAR, arLabel, exporting, busy, file } =
     useExportActions();
 
   return (
@@ -22,6 +22,14 @@ export function ExportButton() {
         className="w-full py-3 bg-accent hover:opacity-90 disabled:opacity-40 text-bg text-sm font-mono font-semibold rounded transition-opacity"
       >
         {exporting === 'glb' ? 'Exporting GLB…' : 'Export GLB'}
+      </button>
+      <button
+        onClick={handleExportOBJ}
+        disabled={busy}
+        className="w-full py-3 bg-panel2 hover:bg-panel3 disabled:opacity-40 border border-line2 text-tx2 text-sm font-mono rounded transition-colors"
+        title="Wavefront OBJ plus its MTL, zipped together. The colors live in the MTL, so keep both files side by side when you import."
+      >
+        {exporting === 'obj' ? 'Exporting OBJ…' : 'Export OBJ (.zip with materials)'}
       </button>
       <button
         onClick={handleExport3MF}

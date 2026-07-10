@@ -15,6 +15,7 @@ import { basename, extname, resolve } from 'node:path';
 import { DOMParser } from '@xmldom/xmldom';
 import {
   convertToGLB,
+  convertToOBJ,
   parseRecolorArg,
   setDefaultDomParser,
   type FilamentRecolorMap,
@@ -47,14 +48,15 @@ function parseRotation(raw: string): [number, number, number] {
   return [parts[0], parts[1], parts[2]];
 }
 
-const HELP = `3mf-to-glb — convert a multi-color 3MF to GLB
+const HELP = `3mf-to-glb — convert a multi-color 3MF to GLB or OBJ
 
 Usage:
   3mf-to-glb <input.3mf> [-o output.glb] [--plate N] [--recolor "1=#hex,2=#hex"]
                           [--pivot MODE] [--rotation "x,y,z"]
 
 Options:
-  -o, --output <file>     Output GLB path (default: input filename with .glb)
+  -o, --output <file>     Output path (default: input filename with .glb).
+                          An .obj extension writes OBJ plus a sibling .mtl.
       --plate <id>        1-based plate id to export (default: first plate)
       --recolor <map>     Comma-separated index=hex pairs applied before export
       --pivot <mode>      Export pivot: base-center (default), bbox-center,
@@ -69,6 +71,7 @@ Examples:
   3mf-to-glb model.3mf -o recolored.glb --recolor "1=#cc0000,2=#000000"
   3mf-to-glb model.3mf --plate 2 -o plate2.glb
   3mf-to-glb model.3mf --rotation "90,0,0" -o yup.glb
+  3mf-to-glb model.3mf -o model.obj
 `;
 
 function parseArgs(argv: string[]): CliArgs {
@@ -143,12 +146,30 @@ async function main(): Promise<number> {
     basename(inputPath, extname(inputPath)) + '.glb';
 
   const buf = await readFile(inputPath);
-  const bytes = await convertToGLB(buf, {
+  const convertOptions = {
     plateId: args.plate,
     recolor: args.recolor,
     pivotMode: args.pivot,
     rotationEulerDeg: args.rotation,
-  });
+  };
+
+  if (extname(output).toLowerCase() === '.obj') {
+    // The .obj references its .mtl by bare filename, so they must be siblings.
+    const mtlPath = output.replace(/\.obj$/i, '.mtl');
+    const { obj, mtl } = await convertToOBJ(buf, {
+      ...convertOptions,
+      mtlFilename: basename(mtlPath),
+    });
+    await writeFile(output, obj);
+    await writeFile(mtlPath, mtl);
+    process.stdout.write(
+      `wrote ${output} (${obj.length.toLocaleString()} bytes)\n` +
+        `wrote ${mtlPath} (${mtl.length.toLocaleString()} bytes)\n`,
+    );
+    return 0;
+  }
+
+  const bytes = await convertToGLB(buf, convertOptions);
   await writeFile(output, bytes);
 
   process.stdout.write(`wrote ${output} (${bytes.byteLength.toLocaleString()} bytes)\n`);
