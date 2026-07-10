@@ -584,6 +584,20 @@ For a color preview tool, subdivided triangles can be handled two ways:
 1. **Simple approach**: Use the most common color in the subtree, or the first leaf color
 2. **Accurate approach**: Reconstruct the full triangle subdivision tree and render sub-triangles
 
+> **This project implements the accurate approach.** `subdividePaintedTriangle`
+> in `src/lib/parse3MF.ts` reproduces `TriangleSelector::perform_split` from
+> BambuStudio/PrusaSlicer: rotate the triangle so `special_side` leads, insert
+> exact edge midpoints, emit the children CCW. The simple approach is not
+> viable: on a coarse mesh a painted patch smaller than half a triangle
+> disappears entirely (see the colortest.3mf fixture), and a per-triangle
+> rollup can never place a color boundary anywhere but an existing mesh edge.
+>
+> Subdivision is bounded by `PAINT_MIN_FEATURE_FRACTION`: once a sub-triangle's
+> longest edge falls under 0.4% of the mesh bbox diagonal, the remaining
+> subtree collapses to its area-dominant state. Dense meshes otherwise blow up
+> (watchful-owl.3mf: 896k source faces to 18.7M leaves) to encode detail finer
+> than a nozzle can print.
+
 ### 6.5 Decoding Algorithm
 
 ```javascript

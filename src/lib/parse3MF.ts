@@ -15,7 +15,23 @@ interface TriangleParsed {
   v1: number; v2: number; v3: number;
   pid: number | null;
   p1: number;
-  paintExtruder: number; // 0 = no paint (inherit), 1+ = painted extruder
+  paintColor: string; // raw Bambu paint_color attribute; '' = unpainted
+}
+
+/** One node of a decoded Bambu paint_color subdivision tree. */
+interface PaintTreeNode {
+  splitSides: number;               // 0 = leaf, 1..3 = subdivided
+  specialSide: number;              // 0..2, meaningful only when splitSides > 0
+  state: number;                    // leaf extruder state; 0 = inherit
+  children: PaintTreeNode[] | null; // length splitSides + 1, in child-array order
+  /**
+   * The single state covering this whole subtree, or null when it is mixed.
+   * A uniform subtree tiles exactly the parent triangle, so it can be emitted
+   * as that one triangle instead of every leaf. Slicers routinely subdivide
+   * deep into regions that end up a single color, and expanding those blindly
+   * multiplied watchful-owl from 0.9M to 18.7M faces.
+   */
+  uniform: number | null;
 }
 
 interface ParsedMeshData {
@@ -530,8 +546,21 @@ function buildChunksFromMesh(
 }
 
 /**
- * Split mesh into chunks by paint_color extruder assignment.
- * Groups triangles by their resolved extruder index.
+ * Split a painted mesh into chunks by subdividing every painted triangle down
+ * to its paint_color leaves, then grouping the resulting sub-triangles by
+ * extruder.
+ *
+ * Earlier versions collapsed each source triangle to a single extruder by
+ * plurality vote over its tree. That silently erased paint on coarse meshes:
+ * colortest.3mf paints two patches covering ~6% and ~4% of two cube-face
+ * triangles, so inherit always won the vote and the cube rendered a single
+ * color. The vote also could not place a boundary anywhere except on an
+ * original mesh edge, which is what produced the kuwait.3mf seams. Exact
+ * subdivision removes both failure modes: a leaf's geometry IS its color zone.
+ *
+ * Subdivision stops once a sub-triangle's longest edge falls under
+ * PAINT_MIN_FEATURE_FRACTION of the mesh bounding-box diagonal; below that the
+ * subtree is resolved to its area-dominant state. See the constant.
  */
 function buildChunksFromPaintData(
   mesh: ParsedMeshData,
@@ -539,26 +568,252 @@ function buildChunksFromPaintData(
   name: string,
   defaultExtruder: number,
 ): MeshChunk[] {
-  // Group triangles by their resolved extruder
-  const groups = new Map<number, TriangleParsed[]>();
+  // Raw leaf state -> flat vertex index triples. Flat number[] rather than
+  // objects because painted files reach ~100k source triangles (kuwait, sea)
+  // and each can expand into dozens of leaves.
+  const byState = new Map<number, number[]>();
+  // Shared across the whole mesh so a midpoint on an edge two trees have in
+  // common resolves to one vertex, keeping neighboring leaves watertight.
+  const midCache = new Map<number, number>();
+
+  // Computed before any midpoints are appended, and relative to the mesh's own
+  // size, so the cutoff is invariant under the component/build transforms.
+  const minFeature = PAINT_MIN_FEATURE_FRACTION * bboxDiagonal(mesh.vertices);
 
   for (const tri of mesh.triangles) {
-    // paintExtruder: 0 = inherit default, 1+ = specific extruder
-    const extruder = tri.paintExtruder > 0 ? tri.paintExtruder : defaultExtruder;
-    if (!groups.has(extruder)) groups.set(extruder, []);
-    groups.get(extruder)!.push(tri);
+    const tree = tri.paintColor ? decodePaintTree(tri.paintColor) : null;
+    if (!tree) {
+      pushFace(byState, 0, tri.v1, tri.v2, tri.v3);
+      continue;
+    }
+    subdividePaintedTriangle(tri.v1, tri.v2, tri.v3, tree, mesh.vertices, midCache, byState, minFeature);
+  }
+
+  // Leaf state 0 means "inherit", which resolves to the part/object extruder.
+  const byExtruder = new Map<number, number[]>();
+  for (const [state, indices] of byState) {
+    const extruder = state > 0 ? state : defaultExtruder;
+    const existing = byExtruder.get(extruder);
+    if (!existing) {
+      byExtruder.set(extruder, indices);
+      continue;
+    }
+    // Element-wise: spreading a 100k+ element array into push() overflows the
+    // argument stack.
+    for (const idx of indices) existing.push(idx);
   }
 
   const chunks: MeshChunk[] = [];
-  for (const [extruder, tris] of groups) {
-    const chunk = buildMeshChunk(mesh.vertices, tris, transform, name, extruder);
+  for (const [extruder, indices] of byExtruder) {
+    const chunk = buildMeshChunkFromIndices(mesh.vertices, indices, transform, name, extruder);
     if (chunk) chunks.push(chunk);
   }
   return chunks;
 }
 
+function pushFace(groups: Map<number, number[]>, state: number, a: number, b: number, c: number): void {
+  let list = groups.get(state);
+  if (!list) {
+    list = [];
+    groups.set(state, list);
+  }
+  list.push(a, b, c);
+}
+
 /**
- * Decode Bambu paint_color attribute value.
+ * Stop subdividing once a sub-triangle's longest edge drops below this fraction
+ * of the mesh bounding-box diagonal, and resolve the remaining subtree to its
+ * area-dominant state instead.
+ *
+ * Exact subdivision only buys fidelity when source triangles are large. Dense
+ * meshes already tessellate far below the visible (and printable) limit, so
+ * expanding every painted triangle to its leaves multiplies geometry for
+ * nothing: watchful-owl.3mf went from 896k to 18.7M faces (~1.3 GB of vertex
+ * data, 46 s parse) before this cutoff, and back to ~1.0M after. On a typical
+ * 100 mm model 0.4% of the diagonal is ~0.4 mm, one nozzle width, so the paint
+ * detail being discarded could never be printed.
+ *
+ * Measured face counts, exact vs this cutoff: owl 18.74M -> 1.01M,
+ * hijri-calendar 1.12M -> 0.54M, kuwait 0.17M -> 0.16M, sea 0.24M -> 0.18M.
+ */
+const PAINT_MIN_FEATURE_FRACTION = 0.004;
+
+/**
+ * Stride for the midpoint cache key. Vertex indices are packed as
+ * `lo * MID_KEY_STRIDE + hi`, exact in a float64 for up to ~67M vertices per
+ * mesh, far beyond anything a slicer emits.
+ */
+const MID_KEY_STRIDE = 1 << 26;
+
+function bboxDiagonal(vertices: VertexData[]): number {
+  if (vertices.length === 0) return 0;
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const v of vertices) {
+    if (v.x < minX) minX = v.x;
+    if (v.y < minY) minY = v.y;
+    if (v.z < minZ) minZ = v.z;
+    if (v.x > maxX) maxX = v.x;
+    if (v.y > maxY) maxY = v.y;
+    if (v.z > maxZ) maxZ = v.z;
+  }
+  return Math.hypot(maxX - minX, maxY - minY, maxZ - minZ);
+}
+
+/** Squared length of the longest edge of triangle (a, b, c). */
+function maxEdgeLengthSq(vertices: VertexData[], a: number, b: number, c: number): number {
+  const va = vertices[a], vb = vertices[b], vc = vertices[c];
+  if (!va || !vb || !vc) return 0;
+  const d = (p: VertexData, q: VertexData) => {
+    const dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
+    return dx * dx + dy * dy + dz * dz;
+  };
+  return Math.max(d(va, vb), d(vb, vc), d(vc, va));
+}
+
+/**
+ * Area-weighted dominant state of a subtree, used when a sub-triangle falls
+ * below the size cutoff and must be painted a single color.
+ *
+ * Child area fractions follow directly from the split geometry: a 1-split
+ * halves the triangle; a 2-split yields quarter, quarter, half; a 3-split
+ * yields four quarters. Inherit (state 0) competes on equal footing, which is
+ * what exact geometry would do. This is not the old plurality vote: that
+ * counted children rather than area, and applied to WHOLE source triangles,
+ * which is what bled paint across kuwait.3mf's boundaries. Here it only ever
+ * decides the color of a triangle already too small to print.
+ */
+const SPLIT_AREA_WEIGHTS: readonly number[][] = [
+  [],
+  [0.5, 0.5],
+  [0.25, 0.25, 0.5],
+  [0.25, 0.25, 0.25, 0.25],
+];
+
+function dominantState(node: PaintTreeNode): number {
+  if (node.uniform !== null) return node.uniform;
+
+  const areas = new Map<number, number>();
+  const walk = (n: PaintTreeNode, weight: number): void => {
+    if (n.uniform !== null || !n.children) {
+      const s = n.uniform ?? n.state;
+      areas.set(s, (areas.get(s) ?? 0) + weight);
+      return;
+    }
+    const weights = SPLIT_AREA_WEIGHTS[n.splitSides];
+    for (let i = 0; i < n.children.length; i++) {
+      walk(n.children[i], weight * weights[i]);
+    }
+  };
+  walk(node, 1);
+
+  let best = 0;
+  let bestArea = -1;
+  for (const [state, area] of areas) {
+    if (area > bestArea) {
+      best = state;
+      bestArea = area;
+    }
+  }
+  return best;
+}
+
+/** Exact edge midpoint, allocated once per edge (upstream: 0.5 * (a + b)). */
+function midpointIndex(
+  vertices: VertexData[],
+  cache: Map<number, number>,
+  a: number,
+  b: number,
+): number {
+  const lo = a < b ? a : b;
+  const hi = a < b ? b : a;
+  const key = lo * MID_KEY_STRIDE + hi;
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+
+  const va = vertices[lo];
+  const vb = vertices[hi];
+  const index = vertices.length;
+  vertices.push({ x: (va.x + vb.x) / 2, y: (va.y + vb.y) / 2, z: (va.z + vb.z) / 2 });
+  cache.set(key, index);
+  return index;
+}
+
+/**
+ * Recursively subdivide one source triangle following its paint tree, emitting
+ * leaf geometry grouped by state.
+ *
+ * The child layouts below are a direct transcription of
+ * `TriangleSelector::perform_split` in BambuStudio/PrusaSlicer
+ * (src/libslic3r/TriangleSelector.cpp). Upstream first rotates the triangle so
+ * the special side leads (`for (j=0, idx = tr.special_side(); j<3; ++j, idx =
+ * next_idx_modulo(idx, 3))`), then inserts edge midpoints at fixed positions.
+ * Every child below preserves the source winding, which matters because
+ * glbBuilder renders THREE.FrontSide.
+ */
+function subdividePaintedTriangle(
+  a: number,
+  b: number,
+  c: number,
+  node: PaintTreeNode,
+  vertices: VertexData[],
+  midCache: Map<number, number>,
+  out: Map<number, number[]>,
+  minFeature: number,
+): void {
+  // Covers leaves and any subtree that resolves to a single state: the leaves
+  // of a uniform subtree tile exactly this triangle, so emitting it whole is
+  // lossless and keeps face counts sane on densely painted models.
+  if (node.uniform !== null || !node.children) {
+    pushFace(out, node.uniform ?? node.state, a, b, c);
+    return;
+  }
+
+  // Below the printable-feature cutoff, stop splitting and take the subtree's
+  // area-dominant color for the whole sub-triangle.
+  if (minFeature > 0 && maxEdgeLengthSq(vertices, a, b, c) < minFeature * minFeature) {
+    pushFace(out, dominantState(node), a, b, c);
+    return;
+  }
+
+  // Rotate so the special side leads: V0 = t[k], V1 = t[k+1], V2 = t[k+2].
+  const k = node.specialSide % 3;
+  const src = [a, b, c];
+  const v0 = src[k];
+  const v1 = src[(k + 1) % 3];
+  const v2 = src[(k + 2) % 3];
+  const ch = node.children;
+
+  if (node.splitSides === 1) {
+    // Bisect the far edge. Children: (V0,V1,M12), (M12,V2,V0).
+    const m12 = midpointIndex(vertices, midCache, v1, v2);
+    subdividePaintedTriangle(v0, v1, m12, ch[0], vertices, midCache, out, minFeature);
+    subdividePaintedTriangle(m12, v2, v0, ch[1], vertices, midCache, out, minFeature);
+    return;
+  }
+
+  if (node.splitSides === 2) {
+    // Edge V1-V2 is kept intact. Children: (V0,M01,M20), (M01,V1,M20), (V1,V2,M20).
+    const m01 = midpointIndex(vertices, midCache, v0, v1);
+    const m20 = midpointIndex(vertices, midCache, v2, v0);
+    subdividePaintedTriangle(v0, m01, m20, ch[0], vertices, midCache, out, minFeature);
+    subdividePaintedTriangle(m01, v1, m20, ch[1], vertices, midCache, out, minFeature);
+    subdividePaintedTriangle(v1, v2, m20, ch[2], vertices, midCache, out, minFeature);
+    return;
+  }
+
+  // Three splits: the classic 1-to-4 subdivision, center triangle last.
+  const m01 = midpointIndex(vertices, midCache, v0, v1);
+  const m12 = midpointIndex(vertices, midCache, v1, v2);
+  const m20 = midpointIndex(vertices, midCache, v2, v0);
+  subdividePaintedTriangle(v0, m01, m20, ch[0], vertices, midCache, out, minFeature);
+  subdividePaintedTriangle(m01, v1, m12, ch[1], vertices, midCache, out, minFeature);
+  subdividePaintedTriangle(m12, v2, m20, ch[2], vertices, midCache, out, minFeature);
+  subdividePaintedTriangle(m01, m12, m20, ch[3], vertices, midCache, out, minFeature);
+}
+
+/**
+ * Decode a Bambu paint_color attribute into a subdivision tree.
  *
  * BambuStudio/PrusaSlicer TriangleSelector encoding:
  * - Hex string is read RIGHT-TO-LEFT (rightmost char = tree root)
@@ -567,46 +822,44 @@ function buildChunksFromPaintData(
  * - Leaf states: 0=inherit, 1=Ext1, 2=Ext2, 3=extended (read next nibble, state = value+3)
  * - Extended overflow: if extension nibble is 0xF, accumulate +15 and read another
  *
- * Returns the dominant extruder for this triangle (0 = inherit default).
+ * Children are serialized in REVERSE order ("Serialized in reverse order for
+ * compatibility with PrusaSlicer 2.3.1" in `serialize`; `deserialize` reads
+ * them back with `child_idx = total_children - processed_children - 1`), so the
+ * first subtree in the stream is the LAST child. Ignoring that order was
+ * harmless while we only voted on states, but it scrambles paint once the
+ * children carry distinct geometry.
+ *
+ * Returns null when the string is empty or malformed.
  */
-function decodePaintColor(hex: string): number {
-  if (!hex || hex.length === 0) return 0;
-
-  // Read right-to-left: reverse the string so we can read left-to-right
+function decodePaintTree(hex: string): PaintTreeNode | null {
+  if (!hex) return null;
+  // Read right-to-left: reverse once so the reader can walk forward.
   const reversed = hex.split('').reverse().join('');
   const reader = { pos: 0 };
-  return decodePaintTree(reversed, reader);
+  return decodePaintNode(reversed, reader);
 }
 
-/**
- * Recursively decode paint_color tree and return the dominant extruder.
- *
- * For subdivided triangles, returns the majority state INCLUDING inherit (0).
- * Earlier versions filtered `s > 0` to "prefer painted over inherited", but
- * that over-paints boundary triangles: a triangle with children [0,0,0,4]
- * (75% inherit, 25% white) would get painted entirely white, creating a
- * visible seam bleeding from white painted regions into unpainted neighbors.
- * With the filter removed, inherit wins in that case, giving a cleaner edge.
- * See docs/ARCHITECTURE.md for the kuwait.3mf diagnostic story.
- */
-function decodePaintTree(hex: string, reader: { pos: number }): number {
-  if (reader.pos >= hex.length) return 0;
+function decodePaintNode(hex: string, reader: { pos: number }): PaintTreeNode {
+  const leaf = (state: number): PaintTreeNode =>
+    ({ splitSides: 0, specialSide: 0, state, children: null, uniform: state });
+
+  if (reader.pos >= hex.length) return leaf(0);
 
   const nibble = parseInt(hex[reader.pos++], 16);
-  if (isNaN(nibble)) return 0;
+  if (isNaN(nibble)) return leaf(0);
 
   const splitSides = nibble & 3;
   const upper = (nibble >> 2) & 3;
 
   // Leaf node: no subdivision
   if (splitSides === 0) {
-    if (upper < 3) return upper; // 0=inherit, 1=Ext1, 2=Ext2
+    if (upper < 3) return leaf(upper); // 0=inherit, 1=Ext1, 2=Ext2
 
     // Extended state (upper=3, nibble=0xC): read next nibble(s) for extruder 3+
     let extState = 0;
     while (reader.pos < hex.length) {
       const ext = parseInt(hex[reader.pos++], 16);
-      if (isNaN(ext)) return 0;
+      if (isNaN(ext)) return leaf(0);
       if (ext === 0xF) {
         extState += 15; // overflow: accumulate and read next
       } else {
@@ -614,29 +867,22 @@ function decodePaintTree(hex: string, reader: { pos: number }): number {
         break;
       }
     }
-    return 3 + extState;
+    return leaf(3 + extState);
   }
 
-  // Split node: upper bits = special_side (which edge), not relevant for color
+  // Split node: upper bits are the special side, which drives child geometry.
   const numChildren = splitSides + 1;
-  const votes = new Map<number, number>();
-
-  for (let i = 0; i < numChildren; i++) {
-    const childState = decodePaintTree(hex, reader);
-    votes.set(childState, (votes.get(childState) || 0) + 1);
+  const children: PaintTreeNode[] = new Array(numChildren);
+  for (let i = numChildren - 1; i >= 0; i--) {
+    children[i] = decodePaintNode(hex, reader);
   }
 
-  // Plurality vote including inherit (state 0). If inherit has the most
-  // children, the triangle inherits — avoids over-painting boundary tris.
-  let bestState = 0;
-  let bestCount = -1;
-  for (const [s, count] of votes) {
-    if (count > bestCount) {
-      bestState = s;
-      bestCount = count;
-    }
+  let uniform: number | null = children[0].uniform;
+  for (let i = 1; i < numChildren && uniform !== null; i++) {
+    if (children[i].uniform !== uniform) uniform = null;
   }
-  return bestState;
+
+  return { splitSides, specialSide: upper, state: 0, children, uniform };
 }
 
 function extractMesh(doc: Document, objectId: number, ns: string): ParsedMeshData | null {
@@ -668,10 +914,10 @@ function extractMesh(doc: Document, objectId: number, ns: string): ParsedMeshDat
       const t = tEls[ti];
       const pid = t.getAttribute('pid') ? parseInt(t.getAttribute('pid')!, 10) : null;
 
-      // Bambu paint_color: per-face extruder painting
+      // Bambu paint_color: per-face extruder painting, decoded lazily so the
+      // subdivision pass can read the tree geometry, not just a summary state.
       const paintColor = t.getAttribute('paint_color') || '';
-      const paintExtruder = paintColor ? decodePaintColor(paintColor) : 0;
-      if (paintExtruder > 0 || paintColor.length > 0) hasPaintData = true;
+      if (paintColor.length > 0) hasPaintData = true;
 
       triangles.push({
         v1: parseInt(t.getAttribute('v1') || '0', 10),
@@ -679,7 +925,7 @@ function extractMesh(doc: Document, objectId: number, ns: string): ParsedMeshDat
         v3: parseInt(t.getAttribute('v3') || '0', 10),
         pid,
         p1: parseInt(t.getAttribute('p1') || '0', 10),
-        paintExtruder,
+        paintColor,
       });
     }
 
@@ -738,16 +984,34 @@ function buildMeshChunk(
   filamentIndex: number,
 ): MeshChunk | null {
   if (triangles.length === 0) return null;
+  const indices = new Array<number>(triangles.length * 3);
+  for (let i = 0; i < triangles.length; i++) {
+    const tri = triangles[i];
+    indices[i * 3] = tri.v1;
+    indices[i * 3 + 1] = tri.v2;
+    indices[i * 3 + 2] = tri.v3;
+  }
+  return buildMeshChunkFromIndices(vertices, indices, transform, name, filamentIndex);
+}
 
-  const faceCount = triangles.length;
+/** Build one chunk from a flat list of vertex-index triples. */
+function buildMeshChunkFromIndices(
+  vertices: VertexData[],
+  indices: number[],
+  transform: number[] | null,
+  name: string,
+  filamentIndex: number,
+): MeshChunk | null {
+  if (indices.length === 0) return null;
+
+  const faceCount = indices.length / 3;
   const positions = new Float32Array(faceCount * 9);
   const normals = new Float32Array(faceCount * 9);
 
   for (let fi = 0; fi < faceCount; fi++) {
-    const tri = triangles[fi];
-    const vA = vertices[tri.v1];
-    const vB = vertices[tri.v2];
-    const vC = vertices[tri.v3];
+    const vA = vertices[indices[fi * 3]];
+    const vB = vertices[indices[fi * 3 + 1]];
+    const vC = vertices[indices[fi * 3 + 2]];
     if (!vA || !vB || !vC) continue;
 
     let [ax, ay, az] = [vA.x, vA.y, vA.z];
