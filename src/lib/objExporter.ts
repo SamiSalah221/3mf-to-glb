@@ -63,16 +63,42 @@ export function buildOBJ(scene: THREE.Object3D, options: OBJBuildOptions = {}): 
       else byFilament.set(filamentIndex, [child]);
     });
 
-    const objLines: string[] = [
-      '# Exported by 3mf-to-glb (Printproof)',
-      `# units: millimeters (1 unit = ${(unitsPerMeter / MM_PER_METER).toFixed(3)} mm)`,
-      `mtllib ${mtlFilename}`,
-    ];
-    const mtlLines: string[] = ['# Exported by 3mf-to-glb (Printproof)'];
+    // Weld coincident vertices/normals into global lists so faces share
+    // indices. The chunks handed to us are non-indexed triangle soup (three
+    // private corners per triangle), so without welding every edge reads as
+    // "open" to an editor and coincident color-zone boundaries never join.
+    // The key is the formatted line payload: at POSITION_PRECISION (0.1 micron
+    // in mm) genuinely coincident corners collapse to one vertex, while the
+    // rounding also welds the last-bit differences the layer-clip path leaves.
+    // OBJ allows cross-group vertex sharing and independent v/vn index streams,
+    // so flat per-face normals survive and coincident boundaries close.
+    const vertexLines: string[] = [];
+    const vertexIndex = new Map<string, number>();
+    const normalLines: string[] = [];
+    const normalIndex = new Map<string, number>();
 
-    // OBJ face indices are 1-based and global across the whole file.
-    let vertexOffset = 1;
-    let normalOffset = 1;
+    const internVertex = (payload: string): number => {
+      let idx = vertexIndex.get(payload);
+      if (idx === undefined) {
+        idx = vertexLines.length + 1; // OBJ indices are 1-based
+        vertexLines.push(`v ${payload}`);
+        vertexIndex.set(payload, idx);
+      }
+      return idx;
+    };
+    const internNormal = (payload: string): number => {
+      let idx = normalIndex.get(payload);
+      if (idx === undefined) {
+        idx = normalLines.length + 1;
+        normalLines.push(`vn ${payload}`);
+        normalIndex.set(payload, idx);
+      }
+      return idx;
+    };
+
+    const mtlLines: string[] = ['# Exported by 3mf-to-glb (Printproof)'];
+    // Face blocks, one per filament group, assembled after all v/vn lines.
+    const groupBlocks: string[] = [];
 
     const position = new THREE.Vector3();
     const normal = new THREE.Vector3();
@@ -84,7 +110,7 @@ export function buildOBJ(scene: THREE.Object3D, options: OBJBuildOptions = {}): 
 
       mtlLines.push('', `newmtl ${materialName}`, ...materialBody(meshes[0]));
 
-      objLines.push('', `g ${materialName}`, `usemtl ${materialName}`);
+      const faceLines: string[] = [];
 
       for (const mesh of meshes) {
         const geometry = mesh.geometry;
@@ -93,20 +119,24 @@ export function buildOBJ(scene: THREE.Object3D, options: OBJBuildOptions = {}): 
         const index = geometry.getIndex();
         normalMatrix.getNormalMatrix(mesh.matrixWorld);
 
+        // Map this mesh's local attribute indices to the shared global indices.
+        const vertRemap = new Int32Array(positions.count);
         for (let i = 0; i < positions.count; i++) {
           position.fromBufferAttribute(positions, i).applyMatrix4(mesh.matrixWorld);
-          objLines.push(
-            `v ${fmt(position.x * unitsPerMeter, POSITION_PRECISION)} ` +
+          vertRemap[i] = internVertex(
+            `${fmt(position.x * unitsPerMeter, POSITION_PRECISION)} ` +
               `${fmt(position.y * unitsPerMeter, POSITION_PRECISION)} ` +
               `${fmt(position.z * unitsPerMeter, POSITION_PRECISION)}`,
           );
         }
 
+        let normRemap: Int32Array | null = null;
         if (normals) {
+          normRemap = new Int32Array(normals.count);
           for (let i = 0; i < normals.count; i++) {
             normal.fromBufferAttribute(normals, i).applyMatrix3(normalMatrix).normalize();
-            objLines.push(
-              `vn ${fmt(normal.x, NORMAL_PRECISION)} ` +
+            normRemap[i] = internNormal(
+              `${fmt(normal.x, NORMAL_PRECISION)} ` +
                 `${fmt(normal.y, NORMAL_PRECISION)} ` +
                 `${fmt(normal.z, NORMAL_PRECISION)}`,
             );
@@ -118,28 +148,43 @@ export function buildOBJ(scene: THREE.Object3D, options: OBJBuildOptions = {}): 
           const a = index ? index.getX(f * 3) : f * 3;
           const b = index ? index.getX(f * 3 + 1) : f * 3 + 1;
           const c = index ? index.getX(f * 3 + 2) : f * 3 + 2;
-          objLines.push(normals
-            ? `f ${face(a, vertexOffset, normalOffset)} ${face(b, vertexOffset, normalOffset)} ${face(c, vertexOffset, normalOffset)}`
-            : `f ${a + vertexOffset} ${b + vertexOffset} ${c + vertexOffset}`);
+          const va = vertRemap[a], vb = vertRemap[b], vc = vertRemap[c];
+          // Two corners welded to one vertex means the triangle is zero-area at
+          // output precision; such degenerate faces trip strict importers and
+          // add nothing, so drop them. Neighbors quantize identically, so this
+          // cannot open a hole.
+          if (va === vb || vb === vc || vc === va) continue;
+          faceLines.push(normRemap
+            ? `f ${va}//${normRemap[a]} ${vb}//${normRemap[b]} ${vc}//${normRemap[c]}`
+            : `f ${va} ${vb} ${vc}`);
         }
-
-        vertexOffset += positions.count;
-        if (normals) normalOffset += normals.count;
       }
+
+      if (faceLines.length === 0) continue;
+      // Join each group into one string. Spreading faceLines (up to ~1M lines on
+      // dense models) into push() would overflow the argument stack.
+      groupBlocks.push(`g ${materialName}\nusemtl ${materialName}\n${faceLines.join('\n')}`);
     }
 
-    return { obj: objLines.join('\n') + '\n', mtl: mtlLines.join('\n') + '\n' };
+    // Assemble section by section. Every section is join()ed rather than spread
+    // for the same argument-stack reason: vertexLines alone reaches millions of
+    // entries on the reporter file.
+    const header =
+      '# Exported by 3mf-to-glb (Printproof)\n' +
+      `# units: millimeters (1 unit = ${(unitsPerMeter / MM_PER_METER).toFixed(3)} mm)\n` +
+      `mtllib ${mtlFilename}`;
+    const obj =
+      [header, vertexLines.join('\n'), normalLines.join('\n'), groupBlocks.join('\n')]
+        .filter((section) => section.length > 0)
+        .join('\n') + '\n';
+
+    return { obj, mtl: mtlLines.join('\n') + '\n' };
   } finally {
     // reorientCloneToYUp cloned each geometry; clone(true) shared the materials.
     exportScene.traverse((child) => {
       if (child instanceof THREE.Mesh) child.geometry.dispose();
     });
   }
-}
-
-/** `v//vn` reference; OBJ carries no UVs here so the middle slot stays empty. */
-function face(i: number, vertexOffset: number, normalOffset: number): string {
-  return `${i + vertexOffset}//${i + normalOffset}`;
 }
 
 function fmt(n: number, precision: number): string {

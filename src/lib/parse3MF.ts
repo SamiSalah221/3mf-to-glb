@@ -300,7 +300,7 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
           const subNs = subDoc.documentElement.namespaceURI || '';
           const mesh = extractMesh(subDoc, compObjId, subNs);
           if (mesh) {
-            const newChunks = buildChunksFromMesh(mesh, finalTransform, objName, partExtruder);
+            const newChunks = buildChunksFromMesh(mesh, finalTransform, objName, partExtruder, unitToMeters);
             chunks.push(...newChunks);
           }
         }
@@ -309,7 +309,7 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
       // Direct mesh on root object
       const mesh = extractMesh(rootDoc, objId, ns);
       if (mesh) {
-        const newChunks = buildChunksFromMesh(mesh, buildTransform, objName, objExtruder);
+        const newChunks = buildChunksFromMesh(mesh, buildTransform, objName, objExtruder, unitToMeters);
         chunks.push(...newChunks);
       }
     }
@@ -522,10 +522,11 @@ function buildChunksFromMesh(
   transform: number[] | null,
   name: string,
   defaultExtruder: number,
+  unitToMeters: number,
 ): MeshChunk[] {
   // Check for Bambu paint_color data (per-face extruder painting)
   if (mesh.hasPaintData) {
-    return buildChunksFromPaintData(mesh, transform, name, defaultExtruder);
+    return buildChunksFromPaintData(mesh, transform, name, defaultExtruder, unitToMeters);
   }
 
   // Check for standard 3MF inline colors (pid/p1 + basematerials)
@@ -558,15 +559,18 @@ function buildChunksFromMesh(
  * original mesh edge, which is what produced the kuwait.3mf seams. Exact
  * subdivision removes both failure modes: a leaf's geometry IS its color zone.
  *
- * Subdivision stops once a sub-triangle's longest edge falls under
- * PAINT_MIN_FEATURE_FRACTION of the mesh bounding-box diagonal; below that the
- * subtree is resolved to its area-dominant state. See the constant.
+ * By default the paint tree is decoded EXACTLY: every leaf becomes its own zone
+ * (slicer-identical). Only when the exact face count would overflow
+ * PAINT_FACE_BUDGET does subdivision stop early, collapsing any sub-triangle
+ * whose longest edge falls under the (then-raised) cutoff to its area-dominant
+ * state. See PAINT_MIN_FEATURE_FRACTION and the cutoff selection above.
  */
 function buildChunksFromPaintData(
   mesh: ParsedMeshData,
   transform: number[] | null,
   name: string,
   defaultExtruder: number,
+  unitToMeters: number,
 ): MeshChunk[] {
   // Raw leaf state -> flat vertex index triples. Flat number[] rather than
   // objects because painted files reach ~100k source triangles (kuwait, sea)
@@ -576,9 +580,44 @@ function buildChunksFromPaintData(
   // common resolves to one vertex, keeping neighboring leaves watertight.
   const midCache = new Map<number, number>();
 
-  // Computed before any midpoints are appended, and relative to the mesh's own
-  // size, so the cutoff is invariant under the component/build transforms.
-  const minFeature = PAINT_MIN_FEATURE_FRACTION * bboxDiagonal(mesh.vertices);
+  // Subdivision cutoff, in the mesh's own (pre-transform) units so it is applied
+  // before any midpoints are appended. The fraction of the bbox diagonal governs
+  // small models; the absolute floor keeps ~0.4 mm paint detail on large ones
+  // (see PAINT_MIN_FEATURE_ABS_MM). The absolute value is converted from final
+  // printed mm back to mesh-local units: divide by the source-unit scale and by
+  // the build/component transform scale so it means the same physical size.
+  const relCutoff = PAINT_MIN_FEATURE_FRACTION * bboxDiagonal(mesh.vertices);
+  const absCutoff =
+    (PAINT_MIN_FEATURE_ABS_MM / 1000) / unitToMeters / transformScaleFactor(transform);
+  let minFeature = Math.min(relCutoff, absCutoff);
+
+  // Layer 0 (preferred): decode the paint tree EXACTLY. minFeature=0 disables the
+  // size collapse, so every leaf becomes its own zone, geometrically identical to
+  // what the slicer paints. The physical cutoff layers (rel/abs) only exist to
+  // coarsen models whose exact decode would overflow PAINT_FACE_BUDGET. When the
+  // exact count fits the budget, use it: the "2 белых масштаб 95" body decodes to
+  // 1.08M pre-repair faces (< 1.5M) yet the 0.4 mm floor was quantizing its
+  // 1-3 mm paint dots into ~0.4 mm area-dominant steps (15-40% of a dot),
+  // producing the confetti the slicer never shows.
+  //
+  // Only when the exact decode overflows do we fall back to the seeded floor and
+  // double the cutoff until the estimate fits. Owl's exact decode is 18.7M, far
+  // over budget, so it takes this path and its output is unchanged. The estimate
+  // mirrors decode+subdivide exactly, so it equals the pre-repair face count, and
+  // it bails early once it exceeds the budget (the over-budget probe never walks
+  // the whole 18.7M tree).
+  if (mesh.triangles.some((t) => t.paintColor.length > 0)) {
+    const exact = estimatePaintFaces(mesh.triangles, mesh.vertices, 0, PAINT_FACE_BUDGET);
+    if (exact <= PAINT_FACE_BUDGET) {
+      minFeature = 0;
+    } else {
+      for (let d = 0; d < PAINT_BUDGET_MAX_DOUBLINGS; d++) {
+        const est = estimatePaintFaces(mesh.triangles, mesh.vertices, minFeature, PAINT_FACE_BUDGET);
+        if (est <= PAINT_FACE_BUDGET) break;
+        minFeature *= 2;
+      }
+    }
+  }
 
   for (const tri of mesh.triangles) {
     const tree = tri.paintColor ? decodePaintTree(tri.paintColor) : null;
@@ -588,6 +627,13 @@ function buildChunksFromPaintData(
     }
     subdividePaintedTriangle(tri.v1, tri.v2, tri.v3, tree, mesh.vertices, midCache, byState, minFeature);
   }
+
+  // Each source triangle was subdivided independently, so a triangle that split
+  // a shared edge can leave a hanging midpoint on a neighbor that did not (an
+  // unpainted neighbor, or one collapsed by uniform/minFeature, or one split on
+  // different sides). That T-junction is a real hole in both the GLB and OBJ.
+  // Conform every triangle to the midpoints its neighbors introduced.
+  repairTJunctions(byState, midCache);
 
   // Leaf state 0 means "inherit", which resolves to the part/object extruder.
   const byExtruder = new Map<number, number[]>();
@@ -621,22 +667,78 @@ function pushFace(groups: Map<number, number[]>, state: number, a: number, b: nu
 }
 
 /**
- * Stop subdividing once a sub-triangle's longest edge drops below this fraction
- * of the mesh bounding-box diagonal, and resolve the remaining subtree to its
- * area-dominant state instead.
+ * Seed for the subdivision cutoff USED ONLY WHEN the exact decode overflows the
+ * face budget. By default (exact decode fits PAINT_FACE_BUDGET) the cutoff is 0,
+ * i.e. no early stop: every leaf is its own zone, geometrically identical to the
+ * slicer. This constant, PAINT_MIN_FEATURE_ABS_MM, and the doubling loop only
+ * govern the fallback path for meshes whose exact decode is too large.
  *
- * Exact subdivision only buys fidelity when source triangles are large. Dense
- * meshes already tessellate far below the visible (and printable) limit, so
- * expanding every painted triangle to its leaves multiplies geometry for
- * nothing: watchful-owl.3mf went from 896k to 18.7M faces (~1.3 GB of vertex
- * data, 46 s parse) before this cutoff, and back to ~1.0M after. On a typical
- * 100 mm model 0.4% of the diagonal is ~0.4 mm, one nozzle width, so the paint
- * detail being discarded could never be printed.
+ * When that fallback triggers, the cutoff is three layers, smallest wins, then a
+ * face budget on top:
  *
- * Measured face counts, exact vs this cutoff: owl 18.74M -> 1.01M,
- * hijri-calendar 1.12M -> 0.54M, kuwait 0.17M -> 0.16M, sea 0.24M -> 0.18M.
+ * 1. FRACTION of the bbox diagonal (this constant): right near 100 mm, where
+ *    0.4% is ~0.4 mm (one nozzle width). It governs small models, where scaling
+ *    below one edge avoids pointless subdivision.
+ * 2. PAINT_MIN_FEATURE_ABS_MM absolute floor: the FRACTION alone scales up on a
+ *    large model and erases printable paint, so the floor keeps ~0.4 mm detail
+ *    regardless of model size. (Historical note: an EARLIER design applied this
+ *    floor unconditionally. On "2 белых масштаб 95.3mf" the 0.4 mm floor
+ *    quantized the body's 1-3 mm slicer paint dots into ~0.4 mm area-dominant
+ *    steps: visible triangle confetti. Since that file's exact decode is 1.08M
+ *    faces < budget, it now decodes exactly and the floor never touches it. The
+ *    floor still protects large models that DO overflow.)
+ * 3. PAINT_FACE_BUDGET: even a correct physical floor cannot bound output. A
+ *    densely painted mesh with a large build-item scale keeps every triangle
+ *    above the floor and expands them all: watchful-owl (3.33x build scale, 896k
+ *    triangles painted with deep trees) decodes to 18.7M faces, far over budget.
+ *    The binding constraint is emitted face count, so the seed cutoff is doubled
+ *    until an exact prepass estimate (estimatePaintFaces) fits the budget. Owl
+ *    settles at ~1.0M / ~30 s; any future overflowing model is bounded whatever
+ *    its scale, units, or density.
+ *
+ * Measured exact-decode face counts (all fit the budget except owl, which takes
+ * the fallback): "2 белых масштаб 95" body 1.08M, owl 18.74M (-> ~1.0M fallback),
+ * hijri-calendar 1.12M, kuwait 0.17M, sea 0.24M.
  */
 const PAINT_MIN_FEATURE_FRACTION = 0.004;
+
+/**
+ * Absolute floor for the FALLBACK subdivision cutoff, in FINAL printed
+ * millimeters (one nozzle width). Caps PAINT_MIN_FEATURE_FRACTION so paint
+ * detail down to ~0.4 mm survives on large models that overflow the budget and
+ * take the fallback path. Converted to mesh-local units per call (accounting for
+ * the source unit and the build/component transform scale). Not applied when the
+ * exact decode fits PAINT_FACE_BUDGET.
+ */
+const PAINT_MIN_FEATURE_ABS_MM = 0.4;
+
+/**
+ * Per-mesh ceiling on the PRE-repair face count of paint subdivision, and the
+ * switch between exact decode and the fallback cutoff: if the exact decode fits
+ * this bound the mesh is decoded exactly, otherwise the cutoff doubles until the
+ * estimate fits. Both owl (~1.0M fallback) and the "2 белых масштаб 95" body
+ * (1.08M exact) load and export in-browser; repairTJunctions then adds ~10-12%,
+ * within the in-browser envelope.
+ */
+const PAINT_FACE_BUDGET = 1_500_000;
+
+/**
+ * Cap on cutoff doublings (256x the base). If the estimate still overflows after
+ * this many, the source triangle count itself is near the budget and there is no
+ * more geometry to shed; take the last cutoff as best effort.
+ */
+const PAINT_BUDGET_MAX_DOUBLINGS = 8;
+
+/** Uniform scale of a 12-float column-major affine's 3x3 part: cbrt(|det|). */
+function transformScaleFactor(m: number[] | null): number {
+  if (!m || m.length < 9) return 1;
+  const det =
+    m[0] * (m[4] * m[8] - m[5] * m[7]) -
+    m[3] * (m[1] * m[8] - m[2] * m[7]) +
+    m[6] * (m[1] * m[5] - m[2] * m[4]);
+  const scale = Math.cbrt(Math.abs(det));
+  return Number.isFinite(scale) && scale > 1e-9 ? scale : 1;
+}
 
 /**
  * Stride for the midpoint cache key. Vertex indices are packed as
@@ -718,6 +820,11 @@ function dominantState(node: PaintTreeNode): number {
   return best;
 }
 
+/** Symmetric cache key for the edge (a, b). */
+function midKey(a: number, b: number): number {
+  return a < b ? a * MID_KEY_STRIDE + b : b * MID_KEY_STRIDE + a;
+}
+
 /** Exact edge midpoint, allocated once per edge (upstream: 0.5 * (a + b)). */
 function midpointIndex(
   vertices: VertexData[],
@@ -727,7 +834,7 @@ function midpointIndex(
 ): number {
   const lo = a < b ? a : b;
   const hi = a < b ? b : a;
-  const key = lo * MID_KEY_STRIDE + hi;
+  const key = midKey(a, b);
   const cached = cache.get(key);
   if (cached !== undefined) return cached;
 
@@ -750,6 +857,10 @@ function midpointIndex(
  * next_idx_modulo(idx, 3))`), then inserts edge midpoints at fixed positions.
  * Every child below preserves the source winding, which matters because
  * glbBuilder renders THREE.FrontSide.
+ *
+ * `walkPaintCount` is a count-only mirror of this function (fused with
+ * `decodePaintNode`); any change to the child layouts, the size collapse, or the
+ * uniform collapse here must be reflected there or the face-budget estimate drifts.
  */
 function subdividePaintedTriangle(
   a: number,
@@ -810,6 +921,75 @@ function subdividePaintedTriangle(
   subdividePaintedTriangle(m01, v1, m12, ch[1], vertices, midCache, out, minFeature);
   subdividePaintedTriangle(m12, v2, m20, ch[2], vertices, midCache, out, minFeature);
   subdividePaintedTriangle(m01, m12, m20, ch[3], vertices, midCache, out, minFeature);
+}
+
+/**
+ * Repair T-junctions left by independent per-triangle paint subdivision.
+ *
+ * `subdividePaintedTriangle` shares midpoints through `midCache`, so two
+ * neighbors that both split their shared edge stay watertight. But a neighbor
+ * that did NOT split that edge (unpainted, uniform-collapsed, dropped below the
+ * minFeature cutoff, or split on a different side) keeps its full edge while the
+ * other side gained a midpoint sitting in the middle of it: a hanging node that
+ * survives any vertex weld as an open/non-manifold edge. That is exactly the
+ * "unclosed triangles at color boundaries" a consumer sees in the OBJ/GLB.
+ *
+ * Every emitted triangle is conformed to the midpoints its neighbors created.
+ * This only ever reuses vertices already in `midCache` (it introduces no new
+ * midpoints), so a single pass is complete.
+ */
+function repairTJunctions(byState: Map<number, number[]>, midCache: Map<number, number>): void {
+  if (midCache.size === 0) return;
+  for (const [state, indices] of byState) {
+    const out: number[] = [];
+    let changed = false;
+    for (let i = 0; i < indices.length; i += 3) {
+      if (emitConforming(indices[i], indices[i + 1], indices[i + 2], midCache, out)) changed = true;
+    }
+    if (changed) byState.set(state, out);
+  }
+}
+
+/**
+ * Emit triangle (a, b, c) conformed to any midpoints on its edges (recursive
+ * bisection). If edge (a, b) has a cached midpoint m, replace the triangle with
+ * (a, m, c) and (m, b, c) and recurse into each: both children preserve the
+ * source winding (load-bearing for FrontSide rendering), sub-edges are
+ * re-checked so nested/multiple hanging nodes resolve, and no zero-area triangle
+ * is ever produced (m is strictly interior to the edge). Returns whether the
+ * triangle was split.
+ *
+ * A fan from a single apex would be wrong here: the fan triangle spanning a
+ * midpoint on an apex-adjacent edge is collinear, so skipping degenerates would
+ * silently drop that midpoint and leave the hole open.
+ */
+function emitConforming(
+  a: number,
+  b: number,
+  c: number,
+  midCache: Map<number, number>,
+  out: number[],
+): boolean {
+  const mab = midCache.get(midKey(a, b));
+  if (mab !== undefined) {
+    emitConforming(a, mab, c, midCache, out);
+    emitConforming(mab, b, c, midCache, out);
+    return true;
+  }
+  const mbc = midCache.get(midKey(b, c));
+  if (mbc !== undefined) {
+    emitConforming(b, mbc, a, midCache, out);
+    emitConforming(mbc, c, a, midCache, out);
+    return true;
+  }
+  const mca = midCache.get(midKey(c, a));
+  if (mca !== undefined) {
+    emitConforming(c, mca, b, midCache, out);
+    emitConforming(mca, a, b, midCache, out);
+    return true;
+  }
+  out.push(a, b, c);
+  return false;
 }
 
 /**
@@ -883,6 +1063,189 @@ function decodePaintNode(hex: string, reader: { pos: number }): PaintTreeNode {
   }
 
   return { splitSides, specialSide: upper, state: 0, children, uniform };
+}
+
+/** Sentinel `lastUniform` for a subtree that is not a single state (decode's null). */
+const PAINT_MIXED = -1;
+
+interface PaintCountCtx {
+  hex: string;         // raw paint_color of the current source triangle
+  pos: number;         // index into hex, read RIGHT-to-left (decrementing)
+  cutoffSq: number;    // minFeature^2; 0 disables the size collapse
+  lastUniform: number; // uniform state of the node just walked, or PAINT_MIXED
+}
+
+/** Hex value 0..15 of a char code, or -1 if not a hex digit (mirrors parseInt(c,16)/isNaN). */
+function hexNibble(code: number): number {
+  if (code >= 48 && code <= 57) return code - 48;   // 0-9
+  if (code >= 97 && code <= 102) return code - 87;  // a-f
+  if (code >= 65 && code <= 70) return code - 55;   // A-F
+  return -1;
+}
+
+/**
+ * Count-only mirror of `decodePaintNode` + `subdividePaintedTriangle` for one
+ * source triangle. It returns exactly the number of faces
+ * `subdividePaintedTriangle` would emit (pre-repair) at the same cutoff, without
+ * building any geometry, so `estimatePaintFaces` can size the output before the
+ * real pass runs. Keep it in lockstep with both of those functions: the child
+ * layouts and reverse child order come from `subdividePaintedTriangle`; the
+ * nibble format, extended states, and reverse serialization come from
+ * `decodePaintNode`.
+ *
+ * Differences from the real pass, all count-neutral:
+ * - Reads the hex RIGHT-to-left in place (decrementing `ctx.pos`) rather than
+ *   reversing the string; `pos < 0` is the exhausted-stream case.
+ * - Carries coordinates as scalars, not vertex indices; midpoints are `(a+b)/2`
+ *   inline and nothing is appended to a vertex array.
+ * - Fuses decode and subdivide into one walk. The stream must still be consumed
+ *   in full even where subdivide would collapse (uniform, or below the cutoff),
+ *   so children are ALWAYS walked; their counts are simply discarded on collapse.
+ * - Reports a node's uniform state up through `ctx.lastUniform` (PAINT_MIXED when
+ *   the subtree is not a single state), mirroring the `uniform` field decode
+ *   computes. Uniformity is order independent, so folding children in stream
+ *   order is fine.
+ */
+function walkPaintCount(
+  ctx: PaintCountCtx,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  cx: number, cy: number, cz: number,
+  below: boolean,
+): number {
+  // One nibble, right-to-left. Exhausted or non-hex stream = leaf state 0.
+  if (ctx.pos < 0) { ctx.lastUniform = 0; return 1; }
+  const nibble = hexNibble(ctx.hex.charCodeAt(ctx.pos--));
+  if (nibble < 0) { ctx.lastUniform = 0; return 1; }
+
+  const splitSides = nibble & 3;
+  const upper = (nibble >> 2) & 3;
+
+  // Leaf node.
+  if (splitSides === 0) {
+    if (upper < 3) { ctx.lastUniform = upper; return 1; } // 0=inherit, 1=Ext1, 2=Ext2
+    // Extended state (upper=3): consume nibbles until a non-0xF terminator. The
+    // value never changes the count, but the exact state must feed lastUniform so
+    // a parent's uniformity check matches decode, and every nibble must be read
+    // to keep the stream aligned for the following siblings.
+    let extState = 0;
+    while (ctx.pos >= 0) {
+      const ext = hexNibble(ctx.hex.charCodeAt(ctx.pos--));
+      if (ext < 0) { ctx.lastUniform = 0; return 1; } // NaN in decode -> leaf(0)
+      if (ext === 0xF) { extState += 15; continue; }  // overflow, keep reading
+      extState += ext;
+      break;
+    }
+    ctx.lastUniform = 3 + extState; // reached on break OR exhausted stream, per decode
+    return 1;
+  }
+
+  // Split node. specialSide rotates which corner leads; rotation preserves edge
+  // lengths, so the size check uses the incoming coords.
+  let belowHere = below;
+  if (!belowHere && ctx.cutoffSq > 0) {
+    const ab = (ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2;
+    const bc = (bx - cx) ** 2 + (by - cy) ** 2 + (bz - cz) ** 2;
+    const ca = (cx - ax) ** 2 + (cy - ay) ** 2 + (cz - az) ** 2;
+    const maxEdgeSq = ab > bc ? (ab > ca ? ab : ca) : (bc > ca ? bc : ca);
+    if (maxEdgeSq < ctx.cutoffSq) belowHere = true;
+  }
+
+  let sum = 0;
+  let ua = 0, ub = 0, uc = 0, ud = 0;
+
+  if (belowHere) {
+    // Geometry is irrelevant below the cutoff (below-cutoff is monotonic down the
+    // tree); only consume the stream and learn each child's uniform state. Walk
+    // exactly numChildren subtrees. Uniformity is symmetric, so the child->slot
+    // mapping does not matter here.
+    sum += walkPaintCount(ctx, ax, ay, az, bx, by, bz, cx, cy, cz, true); ua = ctx.lastUniform;
+    sum += walkPaintCount(ctx, ax, ay, az, bx, by, bz, cx, cy, cz, true); ub = ctx.lastUniform;
+    if (splitSides >= 2) { sum += walkPaintCount(ctx, ax, ay, az, bx, by, bz, cx, cy, cz, true); uc = ctx.lastUniform; }
+    if (splitSides === 3) { sum += walkPaintCount(ctx, ax, ay, az, bx, by, bz, cx, cy, cz, true); ud = ctx.lastUniform; }
+  } else {
+    // Rotate so the special side leads: V0 = src[k], V1 = src[k+1], V2 = src[k+2].
+    const k = upper % 3;
+    let v0x, v0y, v0z, v1x, v1y, v1z, v2x, v2y, v2z;
+    if (k === 0) {
+      v0x = ax; v0y = ay; v0z = az; v1x = bx; v1y = by; v1z = bz; v2x = cx; v2y = cy; v2z = cz;
+    } else if (k === 1) {
+      v0x = bx; v0y = by; v0z = bz; v1x = cx; v1y = cy; v1z = cz; v2x = ax; v2y = ay; v2z = az;
+    } else {
+      v0x = cx; v0y = cy; v0z = cz; v1x = ax; v1y = ay; v1z = az; v2x = bx; v2y = by; v2z = bz;
+    }
+
+    // Children are serialized in REVERSE, so the j-th subtree read from the stream
+    // is child index (numChildren-1-j). Walk in stream order (so consumption is
+    // correct) while pairing each subtree to subdividePaintedTriangle's exact
+    // child geometry.
+    if (splitSides === 1) {
+      // child0 = (V0,V1,M12), child1 = (M12,V2,V0). Stream: child1, child0.
+      const m12x = (v1x + v2x) / 2, m12y = (v1y + v2y) / 2, m12z = (v1z + v2z) / 2;
+      sum += walkPaintCount(ctx, m12x, m12y, m12z, v2x, v2y, v2z, v0x, v0y, v0z, false); ub = ctx.lastUniform;
+      sum += walkPaintCount(ctx, v0x, v0y, v0z, v1x, v1y, v1z, m12x, m12y, m12z, false); ua = ctx.lastUniform;
+    } else if (splitSides === 2) {
+      // child0=(V0,M01,M20), child1=(M01,V1,M20), child2=(V1,V2,M20). Stream: 2,1,0.
+      const m01x = (v0x + v1x) / 2, m01y = (v0y + v1y) / 2, m01z = (v0z + v1z) / 2;
+      const m20x = (v2x + v0x) / 2, m20y = (v2y + v0y) / 2, m20z = (v2z + v0z) / 2;
+      sum += walkPaintCount(ctx, v1x, v1y, v1z, v2x, v2y, v2z, m20x, m20y, m20z, false); uc = ctx.lastUniform;
+      sum += walkPaintCount(ctx, m01x, m01y, m01z, v1x, v1y, v1z, m20x, m20y, m20z, false); ub = ctx.lastUniform;
+      sum += walkPaintCount(ctx, v0x, v0y, v0z, m01x, m01y, m01z, m20x, m20y, m20z, false); ua = ctx.lastUniform;
+    } else {
+      // Classic 1-to-4, center last. Stream: 3,2,1,0.
+      const m01x = (v0x + v1x) / 2, m01y = (v0y + v1y) / 2, m01z = (v0z + v1z) / 2;
+      const m12x = (v1x + v2x) / 2, m12y = (v1y + v2y) / 2, m12z = (v1z + v2z) / 2;
+      const m20x = (v2x + v0x) / 2, m20y = (v2y + v0y) / 2, m20z = (v2z + v0z) / 2;
+      sum += walkPaintCount(ctx, m01x, m01y, m01z, m12x, m12y, m12z, m20x, m20y, m20z, false); ud = ctx.lastUniform;
+      sum += walkPaintCount(ctx, m12x, m12y, m12z, v2x, v2y, v2z, m20x, m20y, m20z, false); uc = ctx.lastUniform;
+      sum += walkPaintCount(ctx, m01x, m01y, m01z, v1x, v1y, v1z, m12x, m12y, m12z, false); ub = ctx.lastUniform;
+      sum += walkPaintCount(ctx, v0x, v0y, v0z, m01x, m01y, m01z, m20x, m20y, m20z, false); ua = ctx.lastUniform;
+    }
+  }
+
+  // Combine in subdivide's precedence: uniform collapse first, then size collapse.
+  // The subtree is uniform iff every child is the same non-mixed state.
+  let allSame = ua !== PAINT_MIXED && ua === ub;
+  if (allSame && splitSides >= 2 && ua !== uc) allSame = false;
+  if (allSame && splitSides === 3 && ua !== ud) allSame = false;
+  if (allSame) { ctx.lastUniform = ua; return 1; }
+  ctx.lastUniform = PAINT_MIXED;
+  if (belowHere) return 1;
+  return sum;
+}
+
+/**
+ * Exact face-count estimate for the paint subdivision of a mesh at `cutoff`,
+ * without building geometry. Equals the faces `buildChunksFromPaintData` emits
+ * before `repairTJunctions`. Bails as soon as the running total passes
+ * `bailAbove`, so rejecting an over-budget cutoff is cheap.
+ */
+function estimatePaintFaces(
+  triangles: TriangleParsed[],
+  vertices: VertexData[],
+  cutoff: number,
+  bailAbove: number,
+): number {
+  const ctx: PaintCountCtx = { hex: '', pos: 0, cutoffSq: cutoff * cutoff, lastUniform: 0 };
+  let total = 0;
+  for (const tri of triangles) {
+    if (!tri.paintColor) { total += 1; continue; } // unpainted -> one face
+    const va = vertices[tri.v1];
+    const vb = vertices[tri.v2];
+    const vc = vertices[tri.v3];
+    if (!va || !vb || !vc) { total += 1; continue; } // malformed -> collapses to one
+    ctx.hex = tri.paintColor;
+    ctx.pos = tri.paintColor.length - 1;
+    total += walkPaintCount(
+      ctx,
+      va.x, va.y, va.z,
+      vb.x, vb.y, vb.z,
+      vc.x, vc.y, vc.z,
+      false,
+    );
+    if (total > bailAbove) return total;
+  }
+  return total;
 }
 
 function extractMesh(doc: Document, objectId: number, ns: string): ParsedMeshData | null {
@@ -1149,6 +1512,12 @@ function applyLayerColorChanges(
 /**
  * Split a mesh chunk's triangles into multiple chunks based on Z zones.
  * Triangles crossing zone boundaries are clipped at the Z plane.
+ *
+ * This does not introduce T-junctions: an edge only crosses cutZ when both of
+ * its incident faces do, so both get clipped at the same plane. The two sides
+ * can compute the crossing point in a different float order (the lerp direction
+ * follows which vertex is the lone one), so the coordinates may differ in the
+ * last bits, but the OBJ writer's 4-decimal quantization welds them.
  */
 function splitChunkByZZones(chunk: MeshChunk, zones: ZZone[]): MeshChunk[] {
   if (zones.length <= 1) return [chunk];
