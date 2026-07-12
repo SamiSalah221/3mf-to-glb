@@ -66,6 +66,8 @@
     "test:roundtrip": "node scripts/test-roundtrip.mjs"
   },
   "dependencies": {
+    "@fontsource/hanken-grotesk": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@gltf-transform/core": "^4.3.0",
     "@google/model-viewer": "^4.3.1",
     "@react-three/drei": "^10.7.7",

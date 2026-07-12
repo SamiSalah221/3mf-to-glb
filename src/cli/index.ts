@@ -48,7 +48,7 @@ function parseRotation(raw: string): [number, number, number] {
   return [parts[0], parts[1], parts[2]];
 }
 
-const HELP = `3mf-to-glb — convert a multi-color 3MF to GLB or OBJ
+const HELP = `3mf-to-glb: convert a multi-color 3MF to GLB or OBJ
 
 Usage:
   3mf-to-glb <input.3mf> [-o output.glb] [--plate N] [--recolor "1=#hex,2=#hex"]

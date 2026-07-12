@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { HexColorPicker } from 'react-colorful';
 import { useAppStore } from '../store/useAppStore';
+import { SwatchSquare } from './SwatchSquare';
+import { ResetIcon } from './Icon';
 import type { FilamentSlot } from '../types';
 
 function SingleColorEditor({
@@ -40,7 +42,7 @@ function SingleColorEditor({
     <div className="space-y-3">
       <div>
         <h3 className="text-tx font-medium text-sm mb-0.5">{label}</h3>
-        <p className="text-tx3 text-[10px] font-mono">Original: {filament.originalColor}</p>
+        <p className="text-tx3 text-[11px] font-mono">Original: {filament.originalColor}</p>
       </div>
 
       <div
@@ -52,7 +54,7 @@ function SingleColorEditor({
 
       <div className="flex gap-2 items-center">
         <div
-          className="w-9 h-9 rounded border border-line2 flex-shrink-0"
+          className="w-9 h-9 rounded-md border border-line flex-shrink-0"
           style={{ backgroundColor: filament.currentColor }}
         />
         <input
@@ -60,7 +62,7 @@ function SingleColorEditor({
           value={hexInput}
           disabled={disabled}
           onChange={(e) => handleHexInput(e.target.value)}
-          className="flex-1 bg-panel2 border border-line2 rounded px-3 py-1.5 text-tx text-sm font-mono focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-1 bg-panel2 border border-line rounded-md px-3 py-1.5 text-tx text-sm font-mono focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-40 disabled:cursor-not-allowed"
           placeholder="#FF0000"
           aria-label={`Hex color value for ${label}`}
         />
@@ -72,7 +74,7 @@ function SingleColorEditor({
             setFilamentColor(filament.index, filament.originalColor);
             setHexInput(filament.originalColor);
           }}
-          className="text-[10px] font-mono text-tx3 hover:text-tx2 transition-colors"
+          className="text-[11px] font-mono text-tx3 hover:text-tx2 transition-colors"
         >
           Reset to original ({filament.originalColor})
         </button>
@@ -91,8 +93,8 @@ export function ColorPickerPanel() {
   if (!filament) {
     return (
       <div className="flex items-center justify-center h-full p-6">
-        <p className="text-tx3 text-xs font-mono text-center">
-          Select a color zone to change its color
+        <p className="text-tx3 text-xs text-center">
+          Pick a zone on the model to recolor it.
         </p>
       </div>
     );
@@ -108,19 +110,17 @@ export function ColorPickerPanel() {
       <div className="space-y-4">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
+            <SwatchSquare filament={filament} filaments={filaments} />
             <h3 className="text-tx font-medium text-sm">Mix {filament.index}</h3>
-            <span className="px-1.5 py-px rounded text-[9px] font-semibold uppercase bg-fuchsia-500/20 text-fuchsia-300">
-              Mixed
-            </span>
             {overridden && (
-              <span className="px-1.5 py-px rounded text-[9px] font-semibold uppercase bg-amber-500/20 text-amber-300">
+              <span className="px-1.5 py-px rounded text-[11px] font-medium bg-warn/20 text-warn">
                 Overridden
               </span>
             )}
           </div>
-          <p className="text-tx3 text-[10px] font-mono mt-1 leading-relaxed">
+          <p className="text-tx3 text-[11px] mt-1 leading-relaxed">
             {overridden
-              ? 'This zone uses an explicit color. The sources below are locked — relink to follow the blend again.'
+              ? 'This zone uses an explicit color. The sources below are locked. Relink to follow the blend again.'
               : `Blend of ${pctA}% F${filament.mix.sources[0]} + ${100 - pctA}% F${filament.mix.sources[1]}. Edit a source below, or set this zone's color directly to override.`}
           </p>
         </div>
@@ -134,20 +134,21 @@ export function ColorPickerPanel() {
         {overridden && (
           <button
             onClick={() => relinkMixedFilament(filament.index)}
-            className="w-full py-2 text-xs font-mono font-medium text-fuchsia-300 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 rounded transition-colors"
+            className="w-full h-9 flex items-center justify-center gap-1.5 text-xs font-medium text-tx2 bg-panel2 hover:bg-panel3 border border-line hover:border-line2 rounded-md transition-colors active:scale-[0.98]"
           >
-            ↺ Relink to blend
+            <ResetIcon />
+            Relink to blend
           </button>
         )}
 
         <div className="pt-3 border-t border-line space-y-4">
-          <p className="text-tx3 text-[10px] font-mono uppercase tracking-wider">
-            Sources {overridden && <span className="text-tx4">(locked)</span>}
+          <p className="text-tx2 text-[11px] font-semibold tracking-[0.02em]">
+            Sources {overridden && <span className="text-tx4 font-normal">(locked)</span>}
           </p>
           {sourceA && (
             <SingleColorEditor
               filament={sourceA}
-              label={`Source A — Filament ${sourceA.index}`}
+              label={`Source A: Filament ${sourceA.index}`}
               disabled={overridden}
             />
           )}
@@ -155,7 +156,7 @@ export function ColorPickerPanel() {
             <div className="pt-2 border-t border-line/50">
               <SingleColorEditor
                 filament={sourceB}
-                label={`Source B — Filament ${sourceB.index}`}
+                label={`Source B: Filament ${sourceB.index}`}
                 disabled={overridden}
               />
             </div>

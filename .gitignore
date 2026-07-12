@@ -34,6 +34,10 @@ dist-ssr
 !/public/**/*.png
 # Local AI-assistant context file (not for the repo)
 /CLAUDE.md
+# Local AI-assistant hooks/settings (machine-specific paths, not for the repo)
+/.claude/
+# Generated knowledge-graph artifacts (rebuildable, not for the repo)
+/graphify-out/
 
 # Private / local-only docs (never publish)
 /docs/OUTREACH.md

@@ -12,13 +12,13 @@ export default function App() {
   if (error) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-bg gap-4">
-        <div className="text-red-400 text-sm font-mono font-medium tracking-wider uppercase">Parse error</div>
-        <p className="text-tx2 text-sm font-mono max-w-md text-center leading-relaxed">{error}</p>
+        <div className="text-red-400 text-sm font-semibold">Parse error</div>
+        <p className="text-tx2 text-sm max-w-md text-center leading-relaxed">{error}</p>
         <button
           onClick={reset}
-          className="mt-2 px-4 py-2 bg-accent hover:opacity-90 text-bg rounded text-sm font-mono font-medium transition-opacity"
+          className="mt-2 px-4 py-2 bg-accent hover:bg-accent-hover text-accent-fg rounded-md text-sm font-medium transition-colors"
         >
-          Try Again
+          Try again
         </button>
       </div>
     );

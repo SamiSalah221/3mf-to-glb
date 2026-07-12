@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Logo } from './Logo';
 import { PlatePills, PlateSelector } from './ZonePanel';
 import { ColorPickerPanel } from './ColorPicker';
 import { ExportButton } from './ExportButton';
@@ -45,11 +46,9 @@ export function EditorScreen() {
         <header className="flex-shrink-0 h-[54px] flex items-center gap-3 px-4 border-b border-line bg-panel z-10">
           {/* Wordmark */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-7 h-7 rounded bg-accent flex items-center justify-center flex-shrink-0">
-              <span className="text-bg text-[10px] font-mono font-bold leading-none">PP</span>
-            </div>
-            <span className="text-tx text-sm font-mono font-medium whitespace-nowrap">
-              print<span className="text-tx3">·</span>proof
+            <Logo className="w-7 h-7 text-tx flex-shrink-0" />
+            <span className="text-tx text-sm font-semibold whitespace-nowrap">
+              Printproof
             </span>
           </div>
 
@@ -58,7 +57,7 @@ export function EditorScreen() {
           {/* Filename */}
           {file && (
             <span
-              className="text-tx3 text-xs font-mono truncate max-w-[180px]"
+              className="text-tx3 text-xs truncate max-w-[180px]"
               title={file.name}
             >
               {file.name}
@@ -71,15 +70,15 @@ export function EditorScreen() {
           <div className="flex-1 min-w-0" />
 
           {/* Privacy badge */}
-          <span className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-accent/40 bg-accent/10 text-accent text-[10px] font-mono whitespace-nowrap">
+          <span className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-line bg-panel2 text-tx2 text-[11px] whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" style={{ animation: 'ccpulse 2s ease-in-out infinite' }} />
-            100% in-browser · nothing uploaded
+            Runs in your browser. Nothing uploaded.
           </span>
 
           {/* New file */}
           <button
             onClick={reset}
-            className="flex-shrink-0 px-3 py-1.5 border border-line2 hover:border-line3 text-tx2 hover:text-tx text-xs font-mono rounded transition-colors"
+            className="flex-shrink-0 h-8 px-3 border border-line hover:border-line2 hover:bg-panel2 text-tx2 hover:text-tx text-xs rounded-md transition-colors active:scale-[0.98]"
           >
             New file
           </button>
@@ -87,10 +86,10 @@ export function EditorScreen() {
 
         {/* Body */}
         <div className="flex-1 flex min-h-0">
-          {/* Viewport — radial gradient bg to contrast the model */}
+          {/* Viewport: radial gradient bg to contrast the model */}
           <div
             className="flex-1 min-w-0 relative min-h-0"
-            style={{ background: 'radial-gradient(ellipse at 50% 40%, #14171C 0%, #050608 100%)' }}
+            style={{ background: 'radial-gradient(ellipse at 50% 40%, #151B27 0%, #0C111A 100%)' }}
           >
             <ViewerCanvas />
             <ViewportChrome />
@@ -114,7 +113,10 @@ export function EditorScreen() {
 
       {/* ── Mobile layout (<lg): always-mounted canvas + tab overlays ── */}
       <div className="flex lg:hidden flex-col h-full">
-        <div className="flex-1 relative min-h-0 touch-none">
+        <div
+          className="flex-1 relative min-h-0 touch-none"
+          style={{ background: 'radial-gradient(ellipse at 50% 40%, #151B27 0%, #0C111A 100%)' }}
+        >
           <ViewerCanvas />
 
           {/* View-tab chrome */}
@@ -122,7 +124,7 @@ export function EditorScreen() {
             <>
               <button
                 onClick={reset}
-                className="absolute top-3 left-3 px-2.5 py-1.5 bg-panel/80 hover:bg-panel2 border border-line text-tx2 text-xs font-mono rounded backdrop-blur transition-colors"
+                className="absolute top-3 left-3 h-10 px-3 flex items-center bg-panel2/85 hover:bg-panel3/90 border border-line shadow-lg shadow-black/20 text-tx2 text-xs rounded-md backdrop-blur-sm transition-colors active:scale-[0.98]"
               >
                 New file
               </button>
@@ -158,9 +160,9 @@ export function EditorScreen() {
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex-1 min-h-[48px] text-xs font-mono capitalize transition-colors ${
+              className={`flex-1 min-h-[48px] text-xs capitalize transition-colors ${
                 activeTab === id
-                  ? 'text-accent border-t-2 border-accent bg-panel2'
+                  ? 'text-tx border-t-2 border-accent bg-panel2'
                   : 'text-tx3 hover:text-tx2'
               }`}
             >

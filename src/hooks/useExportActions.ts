@@ -81,7 +81,7 @@ export function useExportActions() {
         triggerBrowserDownload(bytes, `${baseName}.glb`, 'model/gltf-binary');
         window.alert(
           'AR Quick Look (iOS) and WebXR (Android) only work on mobile. ' +
-            'A GLB has been downloaded — drop it into a viewer like model-viewer or Blender.',
+            'A GLB has been downloaded. Drop it into a viewer like model-viewer or Blender.',
         );
       }
     } catch (err) {

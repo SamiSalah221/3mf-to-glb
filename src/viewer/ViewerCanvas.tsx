@@ -1,6 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import {
+  OrbitControls,
+  PerspectiveCamera,
+  OrthographicCamera,
+  GizmoHelper,
+  GizmoViewport,
+} from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { ColorableModel } from './ColorableModel';
@@ -11,17 +17,58 @@ import { useAppStore } from '../store/useAppStore';
 // picked hex must be exactly what's shown, so we disable tone mapping and
 // skip the studio IBL environment.
 
-// Fixed front view: camera looks from −Y toward +Y with Z up. This is
-// constant for every model and every rotation — users orient manually.
+// Fixed front view: camera looks from -Y toward +Y with Z up. This is
+// constant for every model and every rotation; users orient manually.
 const CAMERA_HOME = { dir: [0, -1, 0] as [number, number, number], up: [0, 0, 1] as [number, number, number] };
 const CAMERA_DISTANCE = 7;
 const DISPLAY_FRAME = 3;
+const CAMERA_FOV = 35;
+// Axis gizmo colors match the token axis palette (X red, Y green, Z blue).
+const GIZMO_AXIS_COLORS: [string, string, string] = ['#E5484D', '#46A758', '#3E8FDD'];
+
+/**
+ * Renders the active camera as either a perspective or orthographic drei
+ * camera (both `makeDefault`), so OrbitControls and CameraRig always drive
+ * whichever is current. Ortho zoom is derived so the framing matches the
+ * perspective view at the model target distance.
+ */
+function ActiveCamera() {
+  const projection = useAppStore((s) => s.cameraProjection);
+  const height = useThree((s) => s.size.height);
+
+  if (projection === 'orthographic') {
+    const visibleHeight = 2 * CAMERA_DISTANCE * Math.tan((CAMERA_FOV * Math.PI) / 180 / 2);
+    const zoom = height > 0 ? height / visibleHeight : 100;
+    return (
+      <OrthographicCamera
+        makeDefault
+        position={[0, -CAMERA_DISTANCE, 0]}
+        up={[0, 0, 1]}
+        zoom={zoom}
+        near={0.01}
+        far={100}
+      />
+    );
+  }
+
+  return (
+    <PerspectiveCamera
+      makeDefault
+      position={[0, -CAMERA_DISTANCE, 0]}
+      up={[0, 0, 1]}
+      fov={CAMERA_FOV}
+      near={0.01}
+      far={100}
+    />
+  );
+}
 
 function CameraRig({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
   const { camera } = useThree();
   const currentPlateId = useAppStore((s) => s.currentPlateId);
   const dimensions = useAppStore((s) => s.dimensions);
   const bboxCenterM = useAppStore((s) => s.bboxCenterM);
+  const cameraProjection = useAppStore((s) => s.cameraProjection);
 
   useEffect(() => {
     // The wrapper group scales the meters-baked scene by DISPLAY_FRAME /
@@ -52,32 +99,54 @@ function CameraRig({ controlsRef }: { controlsRef: React.RefObject<OrbitControls
       controls.target.copy(target);
       controls.update();
     }
-  }, [currentPlateId, camera, controlsRef, bboxCenterM, dimensions]);
+    // cameraProjection is a dep so a perspective/ortho toggle re-homes the
+    // (newly default) camera to the correct framing. Rotations are NOT a dep,
+    // so per-model orientation edits never move the camera.
+  }, [currentPlateId, camera, controlsRef, bboxCenterM, dimensions, cameraProjection]);
 
   return null;
 }
 
 export function ViewerCanvas() {
   const selectFilament = useAppStore((s) => s.selectFilament);
+  const dismissOrbitHint = useAppStore((s) => s.dismissOrbitHint);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   return (
     <Canvas
-      camera={{ position: [0, -7, 0], fov: 35, up: [0, 0, 1] }}
       onPointerMissed={() => selectFilament(null)}
+      onCreated={({ gl }) => {
+        gl.domElement.setAttribute('role', 'img');
+        gl.domElement.setAttribute(
+          'aria-label',
+          'Interactive 3D model preview. Drag to rotate, scroll to zoom, click a color zone to select it.',
+        );
+      }}
       gl={{
         preserveDrawingBuffer: true,
         toneMapping: THREE.NoToneMapping,
         toneMappingExposure: 1,
       }}
     >
+      <ActiveCamera />
+
       <ambientLight intensity={0.75} />
       <directionalLight position={[5, 5, 5]} intensity={0.45} />
       <directionalLight position={[-4, 3, -2]} intensity={0.2} />
 
-      <OrbitControls ref={controlsRef} enableDamping dampingFactor={0.1} />
+      <OrbitControls
+        makeDefault
+        ref={controlsRef}
+        enableDamping
+        dampingFactor={0.1}
+        onStart={dismissOrbitHint}
+      />
       <CameraRig controlsRef={controlsRef} />
       <ColorableModel />
+
+      <GizmoHelper alignment="top-right" margin={[64, 64]}>
+        <GizmoViewport axisColors={GIZMO_AXIS_COLORS} labelColor="#C2CAD6" />
+      </GizmoHelper>
     </Canvas>
   );
 }

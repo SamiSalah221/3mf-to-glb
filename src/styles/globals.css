@@ -1,44 +1,68 @@
 @import "tailwindcss";
 
 @theme {
-  /* Background layers */
-  --color-bg: #050608;
-  --color-panel: #101216;
-  --color-panel2: #14171C;
-  --color-panel3: #191D23;
+  /* Background layers: neutral "Cool Slate" studio ramp. Deliberately
+     very low chroma (faint blue tint only) so the surround doesn't bias
+     the model's colors — this is a WYSIWYG color tool, and a saturated
+     backdrop shifts perceived hue/saturation via simultaneous contrast. */
+  --color-bg: #0C111A;
+  --color-panel: #141A25;
+  --color-panel2: #1B2230;
+  --color-panel3: #232B3B;
 
   /* Border lines */
-  --color-line: #22262D;
-  --color-line2: #2C313A;
-  --color-line3: #383F4A;
+  --color-line: #2E3748;
+  --color-line2: #3E4A5E;
+  --color-line3: #4E5C73;
 
   /* Text */
-  --color-tx: #E8EAEE;
-  --color-tx2: #9BA2AC;
-  --color-tx3: #5A616C;
-  --color-tx4: #3E444E;
+  --color-tx: #F4F7FB;
+  --color-tx2: #C2CAD6;
+  --color-tx3: #93A0B2;
+  --color-tx4: #64748B;
 
-  /* Accent */
-  --color-accent: #9B5DE5;
+  /* Accent (rationed to primary actions + active states). Cool indigo:
+     a cool accent sits opposite the warm model tones the tool is built to
+     preview, so it biases perceived color the least, and it stays clear of
+     the pure R/G/B used by the CAD axis gizmo. On-accent text is white
+     (4.9:1 on the resting accent) since indigo is a dark-ish hue. */
+  --color-accent: #6D5AE6;
+  --color-accent-hover: #8574F0;
+  --color-accent-active: #5646C4;
+  --color-accent-fg: #FFFFFF;
+
+  /* Semantic status (modified/overridden indicators) */
+  --color-warn: #F2B03D;
+
+  /* Axis colors (CAD gizmo + orient controls) */
+  --color-axis-x: #E5484D;
+  --color-axis-y: #46A758;
+  --color-axis-z: #3E8FDD;
 
   /* Fonts */
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 html, body, #root {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background-color: #050608;
+  background-color: #0C111A;
   font-family: var(--font-sans);
-  color: #E8EAEE;
+  color: #F4F7FB;
+}
+
+/* Keyboard focus ring */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 /* Thin scrollbar helper */
 .cc-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #22262D transparent;
+  scrollbar-color: #2E3748 transparent;
 }
 .cc-scroll::-webkit-scrollbar {
   width: 4px;
@@ -47,7 +71,7 @@ html, body, #root {
   background: transparent;
 }
 .cc-scroll::-webkit-scrollbar-thumb {
-  background: #22262D;
+  background: #2E3748;
   border-radius: 2px;
 }
 
@@ -57,12 +81,23 @@ html, body, #root {
   50% { opacity: 0.5; }
 }
 
-@keyframes ccblink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+/* Indeterminate progress: an honest "work is happening" signal with no
+   fake percentage. A short bar sweeps across the track and loops. */
+@keyframes ccindeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
 }
 
-@keyframes ccsheen {
-  0% { transform: translateX(-100%) skewX(-15deg); }
-  100% { transform: translateX(200%) skewX(-15deg); }
+/* Respect OS-level reduced-motion: calm decorative pulses/spins/scale
+   feedback down to a static or near-instant state rather than disabling
+   the app's actual interaction feedback (opacity/color changes stay). */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .animate-spin {
+    animation: none !important;
+  }
 }

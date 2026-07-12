@@ -1,6 +1,7 @@
 import { useEffect, useRef, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
+import { ContactShadows } from '@react-three/drei';
 import { useAppStore } from '../store/useAppStore';
 import { buildSceneFromPlate, type BuiltSceneUserData } from '../lib/glbBuilder';
 import { setExportScene } from '../lib/glbExporter';
@@ -16,6 +17,17 @@ const DISPLAY_FRAME = 3;
 // model dimension in meters. 1/6 lands a clearly visible but not
 // overwhelming gizmo for typical prints.
 const GIZMO_FRACTION = 1 / 6;
+// Build-plate footprint in meters. No bed size exists in the 3MF parse output,
+// so this is a cosmetic reference bed (~standard 250 mm). Snapped up to a
+// 50 mm multiple so the 10 mm / 50 mm grid lines stay exact and nest cleanly.
+const BED_MIN_M = 0.25;
+const GRID_CELL_M = 0.01; // 10 mm fine cells
+const GRID_SECTION_M = 0.05; // 50 mm coarse cells
+// Grid line colors, tuned to read over the viewport's neutral Cool Slate
+// gradient (there is no opaque plate mesh anymore, so the grid floats over
+// it directly). Kept low-chroma to match the neutral studio backdrop.
+const GRID_COLOR_FINE = '#28313F';
+const GRID_COLOR_COARSE = '#3C4A5E';
 
 export function ColorableModel() {
   const parseResult = useAppStore((s) => s.parseResult);
@@ -82,9 +94,24 @@ export function ColorableModel() {
     const center = ud.bboxCenterM;
     if (!m || !bboxMinM || !center) return null;
     const footprint = Math.max(m.x, m.y);
-    const bedSize = footprint * 1.6;
+    // Reference bed, at least BED_MIN_M and 1.2x the footprint so oversized
+    // models still land on a plate; snapped up to a 50 mm multiple so the
+    // grid divisions come out whole and nested.
+    const rawBed = Math.max(BED_MIN_M, footprint * 1.2);
+    const bedSize = Math.ceil(rawBed / GRID_SECTION_M) * GRID_SECTION_M;
+    const fineDivisions = Math.round(bedSize / GRID_CELL_M);
+    const coarseDivisions = Math.round(bedSize / GRID_SECTION_M);
     const eps = Math.max(m.z, footprint) * 0.002;
-    return { cx: center[0], cy: center[1], z: bboxMinM[2] - eps, bedSize };
+    return {
+      cx: center[0],
+      cy: center[1],
+      z: bboxMinM[2] - eps,
+      bedSize,
+      fineDivisions,
+      coarseDivisions,
+      footprint,
+      modelHeight: m.z,
+    };
   }, [sceneGroup]);
 
   // Publish thin-axis, dimensions, and bbox center to the store on each
@@ -147,9 +174,12 @@ export function ColorableModel() {
 
   const handlePointerOver = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
+      const mesh = e.object as THREE.Mesh;
+      // Ignore decorations (plate, grid, shadow): only painted chunks carry a
+      // filamentIndex and a MeshStandardMaterial with an emissive channel.
+      if (!mesh.userData.filamentIndex) return;
       e.stopPropagation();
       document.body.style.cursor = 'pointer';
-      const mesh = e.object as THREE.Mesh;
       if (mesh.userData.filamentIndex !== selectedFilamentIndex) {
         (mesh.material as THREE.MeshStandardMaterial).emissive.setRGB(0.06, 0.06, 0.06);
       }
@@ -159,8 +189,9 @@ export function ColorableModel() {
 
   const handlePointerOut = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
-      document.body.style.cursor = 'auto';
       const mesh = e.object as THREE.Mesh;
+      if (!mesh.userData.filamentIndex) return;
+      document.body.style.cursor = 'auto';
       if (mesh.userData.filamentIndex !== selectedFilamentIndex) {
         (mesh.material as THREE.MeshStandardMaterial).emissive.setRGB(0, 0, 0);
       }
@@ -180,13 +211,55 @@ export function ColorableModel() {
     >
       <primitive object={sceneGroup} />
       {bedPlacement && (
-        <mesh
-          position={[bedPlacement.cx, bedPlacement.cy, bedPlacement.z]}
-          raycast={() => null}
-        >
-          <planeGeometry args={[bedPlacement.bedSize, bedPlacement.bedSize]} />
-          <meshBasicMaterial color="#1e293b" side={THREE.DoubleSide} transparent opacity={0.85} />
-        </mesh>
+        <>
+          {/* Measured grid: two GridHelpers (10 mm faint + 50 mm brighter),
+              rotated from their native XZ plane into XY so they lie on the
+              plate. GridHelper is dead-cheap line geometry, so it scales
+              cleanly with the wrapper group (no world-space shader fade to
+              fight the display scale). */}
+          <gridHelper
+            args={[
+              bedPlacement.bedSize,
+              bedPlacement.fineDivisions,
+              GRID_COLOR_FINE,
+              GRID_COLOR_FINE,
+            ]}
+            rotation={[Math.PI / 2, 0, 0]}
+            position={[bedPlacement.cx, bedPlacement.cy, bedPlacement.z + 0.0005]}
+            raycast={() => null}
+          />
+          <gridHelper
+            args={[
+              bedPlacement.bedSize,
+              bedPlacement.coarseDivisions,
+              GRID_COLOR_COARSE,
+              GRID_COLOR_COARSE,
+            ]}
+            rotation={[Math.PI / 2, 0, 0]}
+            position={[bedPlacement.cx, bedPlacement.cy, bedPlacement.z + 0.0006]}
+            raycast={() => null}
+          />
+
+          {/* Contact shadow. ContactShadows is XZ / Y-up native, so rotate it
+              into the XY plane with its capture pointing up +Z. Baked once
+              (frames={1}); re-keyed on plate + orientation so it refreshes
+              when geometry changes (color edits don't need a re-bake). */}
+          <group
+            key={`${currentPlateId ?? 'none'}-${rotationQuat.join(',')}`}
+            position={[bedPlacement.cx, bedPlacement.cy, bedPlacement.z + 0.0002]}
+            rotation={[Math.PI / 2, 0, 0]}
+          >
+            <ContactShadows
+              opacity={0.35}
+              blur={2.5}
+              resolution={512}
+              scale={bedPlacement.footprint * 1.5}
+              far={bedPlacement.modelHeight}
+              frames={1}
+              color="#000000"
+            />
+          </group>
+        </>
       )}
       {/* Gizmo at the export pivot (local origin of the scene group). The
           wrapper's scale applies, so the gizmo grows / shrinks with the

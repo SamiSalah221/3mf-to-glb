@@ -6,6 +6,18 @@ import { mixFilamentHex } from '../lib/filamentMixer';
  * Recompute every Snapmaker U1 "mixed" slot's currentColor from its two source
  * base filaments' current colors, so derived blends stay live as bases change.
  */
+/** Camera projection for the viewport. Session-only, not persisted. */
+type CameraProjection = 'perspective' | 'orthographic';
+
+/** Read the one-time orbit-hint dismissal flag from localStorage. */
+function readOrbitHintSeen(): boolean {
+  try {
+    return localStorage.getItem('cc.orbitHintSeen') === 'true';
+  } catch {
+    return false;
+  }
+}
+
 function withMixes(filaments: FilamentSlot[]): FilamentSlot[] {
   const byIndex = new Map(filaments.map((f) => [f.index, f]));
   return filaments.map((f) => {
@@ -63,6 +75,14 @@ interface AppStore {
   // 3MF write-back (which would change the print-bed orientation).
   rotationQuat: RotationQuat;
 
+  // Viewport camera projection (session-only). The orbit gizmo and the
+  // ortho/perspective toggle drive this; it never touches export.
+  cameraProjection: CameraProjection;
+
+  // One-time "drag to orbit" hint. Seeded from localStorage so a returning
+  // user never sees it again; dismissed on the first orbit drag.
+  orbitHintSeen: boolean;
+
   // Actions
   setFile: (f: File) => void;
   setLoading: (loading: boolean) => void;
@@ -79,6 +99,8 @@ interface AppStore {
   setCustomPivotMm: (mm: [number, number, number]) => void;
   setRotationQuat: (q: RotationQuat) => void;
   resetRotation: () => void;
+  setCameraProjection: (m: CameraProjection) => void;
+  dismissOrbitHint: () => void;
   resetColors: () => void;
   reset: () => void;
 }
@@ -100,6 +122,8 @@ export const useAppStore = create<AppStore>((set) => ({
   pivotMode: 'base-center',
   customPivotMm: [0, 0, 0],
   rotationQuat: IDENTITY_QUAT,
+  cameraProjection: 'perspective',
+  orbitHintSeen: readOrbitHintSeen(),
 
   setFile: (f) => set({ file: f, error: null }),
 
@@ -153,6 +177,19 @@ export const useAppStore = create<AppStore>((set) => ({
   setRotationQuat: (q) => set({ rotationQuat: q }),
 
   resetRotation: () => set({ rotationQuat: IDENTITY_QUAT }),
+
+  setCameraProjection: (m) => set({ cameraProjection: m }),
+
+  dismissOrbitHint: () =>
+    set((state) => {
+      if (state.orbitHintSeen) return state;
+      try {
+        localStorage.setItem('cc.orbitHintSeen', 'true');
+      } catch {
+        // Ignore storage failures (private mode, quota); the hint just reappears next load.
+      }
+      return { orbitHintSeen: true };
+    }),
 
   resetColors: () =>
     set((state) => ({

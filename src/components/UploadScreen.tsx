@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useAppStore } from '../store/useAppStore';
 import { parse3MF } from '../lib/parse3MF';
@@ -7,9 +7,9 @@ const SAMPLES_BASE_URL =
   'https://raw.githubusercontent.com/SamiSalah221/3mf-to-glb/master/samples/';
 
 const SAMPLES = [
-  { label: 'Try sample · owl (Bambu)', filename: 'watchful-owl.3mf', downloadName: 'owl-sample.3mf' },
+  { label: 'Owl sample (Bambu)', filename: 'watchful-owl.3mf', downloadName: 'owl-sample.3mf' },
   {
-    label: 'Try sample · sea slug (U1)',
+    label: 'Sea slug sample (Snapmaker U1)',
     filename: '海蛞蝓【项目】U1  sea.3mf',
     downloadName: 'u1-sample.3mf',
   },
@@ -17,6 +17,7 @@ const SAMPLES = [
 
 export function UploadScreen() {
   const { setFile, setLoading, setError, setParsed } = useAppStore();
+  const [loadingSample, setLoadingSample] = useState<string | null>(null);
 
   const loadBuffer = useCallback(
     async (file: File) => {
@@ -43,6 +44,7 @@ export function UploadScreen() {
 
   const onTrySample = useCallback(
     async (sample: (typeof SAMPLES)[number]) => {
+      setLoadingSample(sample.filename);
       try {
         setLoading(true);
         const res = await fetch(SAMPLES_BASE_URL + encodeURIComponent(sample.filename));
@@ -52,6 +54,8 @@ export function UploadScreen() {
         await loadBuffer(file);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load sample file');
+      } finally {
+        setLoadingSample(null);
       }
     },
     [loadBuffer, setLoading, setError],
@@ -69,43 +73,49 @@ export function UploadScreen() {
         {/* Drop zone card */}
         <div
           {...getRootProps()}
-          className={`w-[560px] max-w-[90vw] border border-dashed rounded-xl p-14 text-center cursor-pointer transition-all duration-200 ${
+          className={`w-[560px] max-w-[90vw] border rounded-lg p-14 text-center cursor-pointer transition-all duration-200 ${
             isDragActive
-              ? 'border-accent bg-accent/10 scale-[1.02]'
-              : 'border-line3 bg-panel hover:border-line2 hover:bg-panel2'
+              ? 'border-accent bg-panel shadow-[inset_0_0_40px_rgba(109,90,230,0.18)]'
+              : 'border-line bg-panel hover:border-line2 hover:bg-panel2'
           }`}
         >
           <input {...getInputProps()} />
 
-          {/* Upload glyph */}
-          <div className="text-4xl text-tx3 mb-6 select-none">↥</div>
+          {/* Build-plate cube icon */}
+          <div className="flex justify-center text-tx3 mb-6 select-none">
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 2.5 21 7v10l-9 4.5L3 17V7z" />
+              <path d="M3 7l9 4.5L21 7" />
+              <path d="M12 11.5V21.5" />
+            </svg>
+          </div>
 
           <h1 className="text-xl font-semibold text-tx mb-2">
-            {isDragActive ? 'Drop to open…' : 'Drop a multi-color .3mf'}
+            {isDragActive ? 'Drop to open' : 'Drop a multi-color .3mf'}
           </h1>
 
           <p className="text-tx2 text-sm mb-3">
-            See your print before you print it — colors preserved from slicer to screen to AR.
+            See your colors before you print. Printproof keeps them accurate from slicer to screen to AR.
           </p>
 
-          <p className="text-tx3 text-xs font-mono leading-relaxed">
-            Bambu Studio · OrcaSlicer · Snapmaker U1 · parsed locally — nothing uploaded
+          <p className="text-tx3 text-xs leading-relaxed">
+            Works with Bambu Studio, OrcaSlicer, and Snapmaker U1. Files are parsed on your device and never uploaded.
           </p>
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-3">
-          {SAMPLES.map((sample) => (
-            <button
-              key={sample.filename}
-              type="button"
-              onClick={() => onTrySample(sample)}
-              className="px-4 py-2 bg-accent hover:opacity-90 text-bg text-sm font-mono font-medium rounded transition-opacity"
-            >
-              {sample.label}
-            </button>
-          ))}
-          <label className="px-4 py-2 border border-line2 hover:border-line3 text-tx2 text-sm font-mono rounded cursor-pointer transition-colors">
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <label className="h-11 px-5 flex items-center bg-accent hover:bg-accent-hover active:bg-accent-active text-accent-fg text-sm font-semibold rounded-md cursor-pointer transition-colors active:scale-[0.98]">
             Browse file
             <input
               type="file"
@@ -117,6 +127,23 @@ export function UploadScreen() {
               }}
             />
           </label>
+          {SAMPLES.map((sample) => {
+            const isLoadingThis = loadingSample === sample.filename;
+            return (
+              <button
+                key={sample.filename}
+                type="button"
+                onClick={() => onTrySample(sample)}
+                disabled={loadingSample !== null}
+                className="h-11 px-5 flex items-center gap-2 bg-panel2 hover:bg-panel3 border border-line hover:border-line2 disabled:opacity-40 text-tx text-sm rounded-md transition-colors active:scale-[0.98]"
+              >
+                {isLoadingThis && (
+                  <span className="w-3.5 h-3.5 border-2 border-line3 border-t-accent rounded-full animate-spin flex-shrink-0" aria-hidden="true" />
+                )}
+                {sample.label}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

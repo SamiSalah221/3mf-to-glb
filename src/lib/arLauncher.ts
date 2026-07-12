@@ -84,8 +84,8 @@ export async function launchWebXR(glbBytes: Uint8Array, filename: string): Promi
       cleanup();
       triggerBrowserDownload(glbBytes, filename, 'model/gltf-binary');
       window.alert(
-        'WebXR AR is not available on this device. The GLB has been downloaded — ' +
-          'open it in a viewer like model-viewer or Blender.',
+        'WebXR AR is not available on this device. The GLB has been downloaded. ' +
+          'Open it in a viewer like model-viewer or Blender.',
       );
       return;
     }

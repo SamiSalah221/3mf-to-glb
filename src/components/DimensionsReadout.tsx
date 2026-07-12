@@ -36,10 +36,10 @@ export function DimensionsReadout() {
       type="button"
       onClick={cycle}
       title="Click to switch units. Values come from the source 3MF's declared unit baked through to meters for AR."
-      className="absolute bottom-3 right-3 px-3 py-2 bg-panel/80 hover:bg-panel2/80 border border-line backdrop-blur text-tx2 text-[10px] font-mono rounded flex flex-col items-end gap-0.5 transition-colors"
+      className="absolute bottom-3 right-3 px-3 py-2 bg-panel2/85 hover:bg-panel3/90 backdrop-blur-sm hover:border-line2 border border-line shadow-lg shadow-black/20 rounded-md flex flex-col items-end gap-0.5 transition-colors active:scale-[0.98]"
     >
-      <span className="text-tx3 uppercase tracking-wider">W × H × D ({unit})</span>
-      <span>
+      <span className="text-tx3 text-[11px]">W × H × D ({unit})</span>
+      <span className="text-tx2 text-[12px] font-mono">
         {format(x, unit)} × {format(y, unit)} × {format(z, unit)}
       </span>
     </button>
