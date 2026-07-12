@@ -82,8 +82,8 @@ reverse-engineered first.
 
 The per-face format is a nibble-packed recursive triangle-subdivision tree,
 read right-to-left, with state-overflow encoding once you're past 4
-extruders. That decoder — including the subtle plurality-voting rule that
-avoids over-paint seams at subdivision boundaries — is
+extruders. That decoder, and the exact triangle subdivision that reproduces
+the slicer's paint zone for zone instead of guessing a dominant color, is
 [fully documented, down to the bit level](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
 Full Spectrum mixed filaments are virtual extruders whose color is a pigment
 blend of two physical ones, defined in a packed row grammar with enumeration
@@ -100,10 +100,13 @@ before you make it.
   OrcaSlicer, and Snapmaker U1: a nibble-packed recursive
   triangle-subdivision tree, reverse-engineered and
   [fully documented](./docs/3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md).
-- **Rebuilds painted geometry, rather than approximating it.** Each painted
-  triangle is subdivided exactly the way the slicer subdivides it, so a
+- **Rebuilds painted geometry exactly, rather than approximating it.** Each
+  painted triangle is subdivided the way the slicer subdivides it, so a
   brush stroke covering four percent of one triangle survives as four
-  percent of one triangle. Tools that roll a triangle up to a single
+  percent of one triangle. The decode is slicer-identical by default, and
+  color-boundary T-junctions are stitched closed so the mesh stays
+  watertight; a face budget only coarsens meshes so densely painted they
+  would otherwise explode. Tools that roll a triangle up to a single
   "dominant" color silently erase small paint on coarse meshes and can only
   place a color boundary along an edge that already exists in the mesh.
 - **Handles layer-mode coloring**, including U1 Full Spectrum gradients and
@@ -295,13 +298,34 @@ cannot). Midpoints are deduplicated across the mesh, so triangles that share
 an edge share the vertex on it and the surface stays watertight. A leaf of the
 tree becomes a triangle, and its color zone is exact.
 
-Subdivision is bounded rather than unbounded: once a sub-triangle's longest
-edge falls below 0.4% of the model's bounding-box diagonal, the rest of the
-subtree collapses to whichever color covers the most area. That threshold is
-roughly one nozzle width on a typical model, so nothing printable is lost.
-Without it, a densely-tessellated model turns into detail no printer could
-resolve: one 896k-triangle test model expanded to 18.7 million triangles and
-about a gigabyte of vertex data before the cutoff, and one million after.
+By default the tree is decoded **exactly**: every leaf becomes its own
+triangle, so the color zones are geometrically identical to what the slicer
+painted, down to a one-millimeter dot on a large panel. A safety cutoff only
+engages as a fallback, and only for a mesh whose exact decode would blow a
+per-mesh face budget (1.5 million pre-repair faces). When it does engage, the
+parser seeds a floor of about 0.4% of the bounding-box diagonal (capped at a
+0.4 mm absolute minimum, roughly one nozzle width), collapses any sub-triangle
+below it to whichever color covers the most area, and doubles that floor until
+a face-count estimate (a count-only mirror of the real decode) fits the budget.
+
+The distinction matters in both directions. A densely painted 896k-triangle
+owl decodes to 18.7 million triangles and about a gigabyte of vertex data, far
+over budget, so it takes the fallback and coarsens to roughly one million faces
+with no loss anything could resolve. But a lightly painted panel whose 1 mm to
+3 mm slicer dots decode to only 1.08 million faces now stays under budget and
+renders exactly, where an earlier always-on 0.4 mm floor used to quantize those
+dots into visible triangle confetti.
+
+### Stitching color-boundary cracks
+
+Subdividing one triangle but not its neighbour leaves a T-junction: the
+subdivided side gains a vertex at an edge midpoint that the adjacent face never
+got, because that face was unpainted, coarser, or collapsed by the budget
+fallback. A T-junction is a real hole. It shows up as a hairline crack along
+color boundaries in both the GLB and the OBJ, and it breaks watertightness for
+anyone who reimports the mesh. After subdivision the parser walks the emitted
+faces and stitches those seams closed, so each recolored zone meets its
+neighbour cleanly and the exported mesh stays watertight.
 
 ### Instanced parts and their extruders
 
@@ -441,8 +465,10 @@ Already shipped:
   every PR.
 - Exact geometric subdivision of painted triangles, replacing the per-triangle
   dominant-color rollup that erased small paint on coarse meshes and bled
-  color across boundaries, bounded by a printable-feature cutoff so dense
-  meshes do not explode.
+  color across boundaries. The decode is slicer-identical by default, with a
+  per-mesh face budget that coarsens only the densest meshes as a fallback, and
+  color-boundary T-junctions are repaired so the exported GLB and OBJ stay
+  watertight.
 - Positional matching of `<part>` metadata to `<component>` instances, so a
   mesh reused several times in one object keeps a different filament per copy.
 - OBJ + MTL export, zipped in the browser and written as a sibling pair by the
