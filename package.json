@@ -1,6 +1,6 @@
 {
   "name": "3mf-to-glb",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Printproof — see your 3D print before you print it. Open-source, color-preserving 3MF to GLB converter for the Snapmaker U1 / OrcaSlicer / Bambu ecosystem: recolor zones live in the browser, preview true-size in AR, export GLB / USDZ / 3MF, or convert in Node via the CLI. 100% client-side, MIT-licensed.",
   "author": "Sami Salah",
   "license": "MIT",

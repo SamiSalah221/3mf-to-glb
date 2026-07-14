@@ -123,11 +123,11 @@ before you make it.
   update live in the Three.js viewport.
 - **PBR GLB export.** One glTF material per color zone, correct sRGB to
   linear conversion, ready for Blender, Unity, WebGL, and product pages.
-- **OBJ + MTL export.** The same scene as Wavefront OBJ with a companion
-  MTL, one material per filament, zipped together in the browser and written
-  as a sibling pair by the CLI. Vertices are in millimeters and `Kd` values
-  are converted back to sRGB, so the color you picked is the color that
-  loads.
+- **Per-vertex-color OBJ export.** The same scene as a single self-contained
+  Wavefront OBJ: colors ride on the vertices (`v x y z r g b`, sRGB), the
+  extension MeshMixer's coloring mode and Bambu Studio's OBJ import read, so
+  there is no separate MTL to keep alongside it. Vertices are in millimeters
+  and the color you picked is the color that loads.
 - **3MF re-tint round-trip.** Re-emit the source 3MF with new filament
   colors, geometry and `paint_color` zones intact. The output drops back
   into OrcaSlicer / Snapmaker U1 and slices.
@@ -171,7 +171,7 @@ before you make it.
                                                                          ▼
                                                             ┌─────────────────────┐
                                                             │ Export GLB / USDZ / │
-                                                            │ OBJ+MTL / 3MF       │
+                                                            │ OBJ / 3MF           │
                                                             └─────────────────────┘
 ```
 
@@ -210,7 +210,7 @@ npx 3mf-to-glb model.3mf --plate 2 -o plate2.glb
 # Reorient a Z-up print to glTF Y-up while exporting:
 npx 3mf-to-glb model.3mf --rotation "90,0,0" -o yup.glb
 
-# Write Wavefront OBJ instead. The matching model.mtl lands beside it:
+# Write a per-vertex-color Wavefront OBJ instead (one self-contained file):
 npx 3mf-to-glb model.3mf -o model.obj
 ```
 
@@ -218,7 +218,7 @@ Flags:
 
 | Flag | Description |
 |------|-------------|
-| `-o, --output <file>` | Output path. Defaults to the input name with `.glb`. An `.obj` extension writes OBJ plus a sibling `.mtl`. |
+| `-o, --output <file>` | Output path. Defaults to the input name with `.glb`. An `.obj` extension writes a single per-vertex-color OBJ (no MTL). |
 | `--plate <id>` | 1-based plate id (matches Bambu / Orca / U1 `plater_id`). Defaults to the first plate. |
 | `--recolor <map>` | Comma-separated `index=hex` pairs applied before export. Hex may include or omit the leading `#`. |
 | `--pivot <mode>` | Export pivot: `base-center` (default), `bbox-center`, `centroid`, `original`, `custom`. |
@@ -255,12 +255,12 @@ await writeFile('out.glb', bytes);
 
 For the one-shot common case there is also a `convertToGLB(buffer, options)`
 convenience that wraps the four calls above, and `convertToOBJ(buffer, options)`
-which returns the OBJ and MTL bodies as strings.
+which returns `{ obj }`: a single per-vertex-color OBJ body as a string.
 
-Swap the last two lines for `buildOBJ(scene)` to get `{ obj, mtl }` instead, or
-`buildOBJZipBytes(scene, 'model')` to get both files in one zip. Write the pair
-side by side: the `.obj` holds no colors of its own, only an `mtllib` reference
-to the `.mtl` next to it.
+Swap the last two lines for `buildOBJ(scene)` to get `{ obj, stats }` directly,
+or `buildOBJBytes(scene)` for the encoded `Uint8Array`. The OBJ is
+self-contained: colors ride on the `v` lines (`x y z r g b`, sRGB), so there is
+nothing else to write next to it.
 
 ## Under the hood
 
@@ -417,7 +417,7 @@ turning each layer-range into an independent colored zone.
 │   │   ├── colorConvert.ts      # sRGB ↔ linear color space conversion
 │   │   ├── glbBuilder.ts        # Geometry → glTF document construction
 │   │   ├── glbExporter.ts       # GLB binary export
-│   │   └── objExporter.ts       # Wavefront OBJ + MTL export
+│   │   └── objExporter.ts       # Per-vertex-color Wavefront OBJ export
 │   ├── components/       # React UI
 │   ├── viewer/           # Three.js / R3F scene
 │   ├── store/            # Zustand state
@@ -471,9 +471,10 @@ Already shipped:
   watertight.
 - Positional matching of `<part>` metadata to `<component>` instances, so a
   mesh reused several times in one object keeps a different filament per copy.
-- OBJ + MTL export, zipped in the browser and written as a sibling pair by the
-  CLI (`-o model.obj`), with `Kd` converted back to sRGB and vertices in
-  millimeters.
+- Per-vertex-color OBJ export, a single self-contained file in the browser and
+  from the CLI (`-o model.obj`), with sRGB colors on the `v` lines and vertices
+  in millimeters. Coincident corners are welded into one shared pool so the
+  mesh reads as watertight.
 
 Near-term work, in rough priority order:
 

@@ -154,18 +154,10 @@ async function main(): Promise<number> {
   };
 
   if (extname(output).toLowerCase() === '.obj') {
-    // The .obj references its .mtl by bare filename, so they must be siblings.
-    const mtlPath = output.replace(/\.obj$/i, '.mtl');
-    const { obj, mtl } = await convertToOBJ(buf, {
-      ...convertOptions,
-      mtlFilename: basename(mtlPath),
-    });
+    // Self-contained: colors ride on the `v` lines, so there is no sibling .mtl.
+    const { obj } = await convertToOBJ(buf, convertOptions);
     await writeFile(output, obj);
-    await writeFile(mtlPath, mtl);
-    process.stdout.write(
-      `wrote ${output} (${obj.length.toLocaleString()} bytes)\n` +
-        `wrote ${mtlPath} (${mtl.length.toLocaleString()} bytes)\n`,
-    );
+    process.stdout.write(`wrote ${output} (${obj.length.toLocaleString()} bytes)\n`);
     return 0;
   }
 

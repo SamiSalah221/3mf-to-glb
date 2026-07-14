@@ -8,7 +8,7 @@ export { parse3MF } from './parse3MF.js';
 export { buildSceneFromPlate } from './glbBuilder.js';
 export { buildGLBBytes } from './glbExporter.js';
 export { buildUSDZBytes } from './usdzExporter.js';
-export { buildOBJ, buildOBJZipBytes } from './objExporter.js';
+export { buildOBJ, buildOBJBytes } from './objExporter.js';
 export type { OBJBuildOptions, OBJBuildResult } from './objExporter.js';
 export { exportRecolored3MF } from './build3MF.js';
 export {
@@ -129,20 +129,17 @@ export async function convertToGLB(
   return buildGLBBytes(await buildSceneFromBuffer(buffer, opts));
 }
 
-export interface ConvertToOBJOptions extends ConvertToGLBOptions {
-  /** Name written into the .obj `mtllib` line. Defaults to `model.mtl`. */
-  mtlFilename?: string;
-}
+export type ConvertToOBJOptions = ConvertToGLBOptions;
 
 /**
- * Same as `convertToGLB`, but returns the Wavefront OBJ and MTL bodies. The
- * caller must write both: the .obj carries no colors, only a reference to the
- * .mtl by the name given in `mtlFilename`.
+ * Same as `convertToGLB`, but returns a per-vertex-color Wavefront OBJ body.
+ * The OBJ is self-contained: colors ride on the `v` lines (`x y z r g b`,
+ * sRGB), so there is no companion MTL to write.
  */
 export async function convertToOBJ(
   buffer: ArrayBuffer | Uint8Array,
   opts: ConvertToOBJOptions = {},
 ): Promise<OBJBuildResult> {
   const scene = await buildSceneFromBuffer(buffer, opts);
-  return buildOBJ(scene, { mtlFilename: opts.mtlFilename });
+  return buildOBJ(scene);
 }

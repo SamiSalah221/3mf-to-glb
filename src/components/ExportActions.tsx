@@ -53,9 +53,9 @@ export function ExportActions({ layout }: { layout: 'row' | 'stack' }) {
           onClick={handleExportOBJ}
           disabled={busy}
           className="w-full h-12 bg-panel2 hover:bg-panel3 disabled:opacity-40 border border-line hover:border-line2 text-tx text-sm font-medium rounded-md transition-colors active:scale-[0.98]"
-          title="Wavefront OBJ plus its MTL, zipped together. The colors live in the MTL, so keep both files side by side when you import."
+          title="One Wavefront OBJ with the colors baked onto the vertices (v x y z r g b). Opens with color in MeshMixer, Bambu Studio, and Blender. No separate material file to keep track of."
         >
-          Export OBJ (.zip with materials)
+          Export OBJ (vertex colors)
         </button>
         <button
           onClick={handleExport3MF}
@@ -106,7 +106,7 @@ export function ExportActions({ layout }: { layout: 'row' | 'stack' }) {
         <button
           onClick={handleExportOBJ}
           disabled={busy}
-          title="Wavefront OBJ plus its MTL, zipped together. The colors live in the MTL, so keep both files side by side when you import."
+          title="One Wavefront OBJ with the colors baked onto the vertices (v x y z r g b). Opens with color in MeshMixer, Bambu Studio, and Blender. No separate material file to keep track of."
           className="px-3.5 h-10 bg-panel2 hover:bg-panel3 disabled:opacity-40 border border-line hover:border-line2 text-tx text-xs font-medium rounded-md transition-colors active:scale-[0.98]"
         >
           OBJ

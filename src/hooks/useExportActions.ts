@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { exportGLB, triggerBrowserDownload, buildGLBBytes, getExportScene } from '../lib/glbExporter';
 import { buildUSDZBytes } from '../lib/usdzExporter';
-import { buildOBJZipBytes } from '../lib/objExporter';
+import { buildOBJBytes } from '../lib/objExporter';
 import { exportRecolored3MF } from '../lib/build3MF';
 import { detectArPlatform, launchQuickLook, launchWebXR, type ArPlatform } from '../lib/arLauncher';
 import { useAppStore } from '../store/useAppStore';
@@ -37,10 +37,10 @@ export function useExportActions() {
     if (!scene) return;
     setExporting('obj');
     try {
-      // The .obj and its .mtl have to stay together: the colors live in the
-      // .mtl and the .obj references it by filename.
-      const bytes = await buildOBJZipBytes(scene, baseName);
-      triggerBrowserDownload(bytes, `${baseName}-obj.zip`, 'application/zip');
+      // One self-contained .obj: colors ride on the vertices (v x y z r g b),
+      // so there is no .mtl to keep alongside it.
+      const bytes = buildOBJBytes(scene);
+      triggerBrowserDownload(bytes, `${baseName}.obj`, 'model/obj');
     } catch (err) {
       console.error('OBJ export failed:', err);
       window.alert('OBJ export failed. See console for details.');
