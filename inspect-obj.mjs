@@ -19,9 +19,22 @@
 //       hole:       neither (a genuinely missing face)
 //   - per-vertex-color format compliance: every `v` line carries 6 numbers,
 //     RGB in [0,1], no mtllib / usemtl, at least one `g` group
+//   - winding, checked two independent ways, because neither alone is enough
+//     and the open-edge count above sees neither (it keys edges as unordered
+//     pairs, so a backwards mesh scores identically to a correct one):
+//       inconsistent winding: a manifold edge whose two faces traverse it the
+//                   SAME way, i.e. one of them is flipped relative to its
+//                   neighbour. Catches a LOCAL tear, like one branch of the
+//                   Z-clip path emitting its triangles reverse-wound.
+//       signed volume: per connected component. A solid wound CCW-outward
+//                   encloses POSITIVE volume. Catches a GLOBAL inversion, where
+//                   winding is perfectly consistent but the whole object is
+//                   inside-out and renders hollow under THREE.FrontSide
+//                   (issue #9: a mirrored, negative-determinant build-item
+//                   transform reverses every triangle).
 //
-// Exit code 1 on any open edge or format violation, so it gates exporter and
-// parser-topology changes. See CLAUDE.md.
+// Exit code 1 on any open edge, winding fault, or format violation, so it gates
+// exporter and parser-topology changes. See CLAUDE.md.
 //
 // Usage: node inspect-obj.mjs <file.obj> [--eps-mm 0.0002] [--examples 8]
 
@@ -67,9 +80,35 @@ let degenerateFaces = 0;
 // Edge multiset. Key packs the sorted 0-based vertex indices into one integer:
 // min * 2^26 + max. 2^26 = 67,108,864 > any vertex count we produce.
 const EDGE_SHIFT = 2 ** 26;
-const edgeUse = new Map(); // key -> incident face count
+// The value packs TWO counters so winding consistency costs no extra map:
+//   packed = count * EDGE_COUNT_SCALE + (EDGE_DIR_BIAS + imbalance)
+// `count` is how many faces touch the edge; `imbalance` is +1 per face that
+// traverses it low->high minus 1 per face that traverses it high->low. Two
+// faces sharing an edge with consistent winding traverse it in OPPOSITE
+// directions, so a correctly wound manifold edge has count 2 and imbalance 0.
+// Imbalance stays far inside the bias, so the two never collide.
+const EDGE_COUNT_SCALE = 4096;
+const EDGE_DIR_BIAS = 2048;
+const edgeUse = new Map(); // key -> packed(count, imbalance)
 // Retain a couple of example faces per open edge for the T-junction probe.
 const openEdgeList = []; // [aIdx, bIdx]
+
+// Triangle corners, retained for the orientation pass (component labelling +
+// signed volume). Int32Array rather than a plain array: 3 x 4 bytes per face
+// keeps a 1.4M-face export around 17 MB.
+let triBuf = new Int32Array(1 << 16);
+let triLen = 0;
+
+function pushTri(a, b, c) {
+  if (triLen + 3 > triBuf.length) {
+    const grown = new Int32Array(triBuf.length * 2);
+    grown.set(triBuf);
+    triBuf = grown;
+  }
+  triBuf[triLen++] = a;
+  triBuf[triLen++] = b;
+  triBuf[triLen++] = c;
+}
 
 const rl = createInterface({ input: createReadStream(file), crlfDelay: Infinity });
 
@@ -142,14 +181,23 @@ function parseFace(line) {
     addEdge(a, b);
     addEdge(b, c);
     addEdge(c, a);
+    pushTri(a, b, c);
   }
 }
 
 function addEdge(a, b) {
-  const lo = a < b ? a : b;
-  const hi = a < b ? b : a;
+  const ascending = a < b;
+  const lo = ascending ? a : b;
+  const hi = ascending ? b : a;
+  const dir = ascending ? 1 : -1;
   const key = lo * EDGE_SHIFT + hi;
-  edgeUse.set(key, (edgeUse.get(key) ?? 0) + 1);
+  const prev = edgeUse.get(key);
+  edgeUse.set(
+    key,
+    prev === undefined
+      ? EDGE_COUNT_SCALE + EDGE_DIR_BIAS + dir
+      : prev + EDGE_COUNT_SCALE + dir,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +206,15 @@ function addEdge(a, b) {
 
 let openEdges = 0;
 let nonManifoldEdges = 0;
-for (const [key, count] of edgeUse) {
+// Manifold edges whose two faces traverse them the SAME way: one of the pair is
+// wound backwards relative to its neighbour. Unlike a whole mirrored object
+// (consistent winding, just inverted -- caught by signed volume below), this is
+// a local tear, e.g. the Z-clip path emitting one of its cases reverse-wound.
+let inconsistentEdges = 0;
+const inconsistentExamples = [];
+for (const [key, packed] of edgeUse) {
+  const count = Math.floor(packed / EDGE_COUNT_SCALE);
+  const imbalance = packed - count * EDGE_COUNT_SCALE - EDGE_DIR_BIAS;
   if (count === 1) {
     openEdges++;
     if (openEdgeList.length < CLASSIFY_CAP) {
@@ -168,14 +224,130 @@ for (const [key, count] of edgeUse) {
     }
   } else if (count >= 3) {
     nonManifoldEdges++;
+  } else if (imbalance !== 0) {
+    // count === 2
+    inconsistentEdges++;
+    if (inconsistentExamples.length < maxExamples) {
+      const hi = key % EDGE_SHIFT;
+      const lo = (key - hi) / EDGE_SHIFT;
+      inconsistentExamples.push([lo, hi]);
+    }
   }
+}
+
+const vCount = xs.length;
+
+// ---------------------------------------------------------------------------
+// Orientation: per-connected-component signed volume
+//
+// For a closed surface wound CCW-outward, sum(dot(a, cross(b, c))) / 6 over its
+// triangles is the enclosed volume and is POSITIVE. Reflecting a mesh (a
+// negative-determinant build-item transform, i.e. Bambu's Mirror along X/Y/Z)
+// reverses every triangle's winding and flips that sign, which is invisible to
+// every other check here. Components are found by union-find over the triangle
+// corners, so one inverted object on a plate of correct ones is still caught.
+// ---------------------------------------------------------------------------
+
+const parent = new Int32Array(vCount);
+for (let i = 0; i < vCount; i++) parent[i] = i;
+
+function findRoot(x) {
+  let r = x;
+  while (parent[r] !== r) r = parent[r];
+  // Path-compress so repeated lookups over millions of faces stay near O(1).
+  while (parent[x] !== r) {
+    const next = parent[x];
+    parent[x] = r;
+    x = next;
+  }
+  return r;
+}
+
+function union(a, b) {
+  const ra = findRoot(a);
+  const rb = findRoot(b);
+  if (ra !== rb) parent[rb] = ra;
+}
+
+// Faces referencing an out-of-range or negative (relative) index are skipped
+// rather than trusted; this app never emits them.
+let orientationSkipped = 0;
+const inRange = (i) => i >= 0 && i < vCount;
+
+for (let t = 0; t < triLen; t += 3) {
+  const a = triBuf[t], b = triBuf[t + 1], c = triBuf[t + 2];
+  if (!inRange(a) || !inRange(b) || !inRange(c)) {
+    orientationSkipped++;
+    continue;
+  }
+  union(a, b);
+  union(b, c);
+}
+
+// root -> { volume, faces, bbox }
+const components = new Map();
+
+for (let t = 0; t < triLen; t += 3) {
+  const a = triBuf[t], b = triBuf[t + 1], c = triBuf[t + 2];
+  if (!inRange(a) || !inRange(b) || !inRange(c)) continue;
+  const root = findRoot(a);
+  let comp = components.get(root);
+  if (!comp) {
+    comp = {
+      volume: 0,
+      faces: 0,
+      openEdges: 0,
+      minX: Infinity, minY: Infinity, minZ: Infinity,
+      maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity,
+    };
+    components.set(root, comp);
+  }
+  const ax = xs[a], ay = ys[a], az = zs[a];
+  const bx = xs[b], by = ys[b], bz = zs[b];
+  const cx = xs[c], cy = ys[c], cz = zs[c];
+  // dot(a, cross(b, c)) / 6
+  comp.volume +=
+    (ax * (by * cz - bz * cy) +
+      ay * (bz * cx - bx * cz) +
+      az * (bx * cy - by * cx)) / 6;
+  comp.faces++;
+  for (const [px, py, pz] of [[ax, ay, az], [bx, by, bz], [cx, cy, cz]]) {
+    if (px < comp.minX) comp.minX = px;
+    if (py < comp.minY) comp.minY = py;
+    if (pz < comp.minZ) comp.minZ = pz;
+    if (px > comp.maxX) comp.maxX = px;
+    if (py > comp.maxY) comp.maxY = py;
+    if (pz > comp.maxZ) comp.maxZ = pz;
+  }
+}
+
+// Attribute open edges to their component so the report can say whether a
+// negative volume came from a closed solid (conclusive) or a torn one.
+for (const [lo, hi] of openEdgeList) {
+  if (!inRange(lo) || !inRange(hi)) continue;
+  const comp = components.get(findRoot(lo));
+  if (comp) comp.openEdges++;
+}
+
+// A component is judged only when its signed volume is a real volume rather
+// than float noise: compare against its own bounding box, so the test is
+// scale-free and a small mirrored part on a big plate is still judged.
+const VOLUME_NOISE_FRACTION = 1e-6;
+const invertedComponents = [];
+const componentList = [...components.values()].sort((p, q) => Math.abs(q.volume) - Math.abs(p.volume));
+for (const comp of componentList) {
+  const bboxVol =
+    Math.max(comp.maxX - comp.minX, 0) *
+    Math.max(comp.maxY - comp.minY, 0) *
+    Math.max(comp.maxZ - comp.minZ, 0);
+  comp.significant = Math.abs(comp.volume) > bboxVol * VOLUME_NOISE_FRACTION;
+  if (comp.significant && comp.volume < 0) invertedComponents.push(comp);
 }
 
 // ---------------------------------------------------------------------------
 // Spatial grid over vertex positions for duplicate + classification probes
 // ---------------------------------------------------------------------------
 
-const vCount = xs.length;
 const cell = Math.max(epsMm, 1e-6);
 const grid = new Map(); // cellKey -> array of vertex indices
 const cellKey = (x, y, z) =>
@@ -326,6 +498,24 @@ if (openEdges > 0) {
   }
 }
 console.log(`non-manifold:    ${nonManifoldEdges.toLocaleString()} (informational; internal walls are legitimate)`);
+console.log(`inconsistent winding: ${inconsistentEdges.toLocaleString()} manifold edges whose two faces run the same way`);
+for (const [a, b] of inconsistentExamples) console.log(`    ${fmtPt(a)} -- ${fmtPt(b)}`);
+console.log('');
+console.log(`components:      ${componentList.length} (signed volume; negative = inside-out)`);
+for (const comp of componentList.slice(0, Math.max(maxExamples, 8))) {
+  const flag = comp.significant && comp.volume < 0 ? '  <== INVERTED' : '';
+  const torn = comp.openEdges > 0 ? `, ${comp.openEdges.toLocaleString()} open` : '';
+  const noise = comp.significant ? '' : ', below noise floor (not judged)';
+  console.log(
+    `  vol ${comp.volume.toFixed(4)} mm^3, ${comp.faces.toLocaleString()} faces${torn}${noise}${flag}`,
+  );
+}
+if (componentList.length > Math.max(maxExamples, 8)) {
+  console.log(`  ... ${componentList.length - Math.max(maxExamples, 8)} more`);
+}
+if (orientationSkipped > 0) {
+  console.log(`  skipped ${orientationSkipped.toLocaleString()} faces with out-of-range indices`);
+}
 console.log(`degenerate faces: ${degenerateFaces.toLocaleString()}`);
 console.log(`dup-position pairs (<= eps): ${dupPairs.toLocaleString()}`);
 for (const [i, j] of dupExamples) console.log(`    dup: ${fmtPt(i)} == ${fmtPt(j)}`);
@@ -340,6 +530,12 @@ console.log('');
 
 const failures = [];
 if (openEdges > 0) failures.push(`${openEdges} open edges`);
+if (invertedComponents.length > 0) {
+  failures.push(`${invertedComponents.length} inside-out component(s) (negative signed volume)`);
+}
+if (inconsistentEdges > 0) {
+  failures.push(`${inconsistentEdges} edges with inconsistent winding`);
+}
 if (badArity > 0) failures.push(`${badArity} v lines without 6 numbers`);
 if (rgbOutOfRange > 0) failures.push(`${rgbOutOfRange} RGB values out of range`);
 if (mtllibCount > 0) failures.push(`${mtllibCount} mtllib lines (MTL must be gone)`);
@@ -347,7 +543,7 @@ if (usemtlCount > 0) failures.push(`${usemtlCount} usemtl lines (MTL must be gon
 if (gCount === 0) failures.push('no g groups');
 
 if (failures.length === 0) {
-  console.log('PASS: watertight, per-vertex-color OBJ');
+  console.log('PASS: watertight, outward-wound, per-vertex-color OBJ');
   process.exit(0);
 } else {
   console.log(`FAIL: ${failures.join('; ')}`);

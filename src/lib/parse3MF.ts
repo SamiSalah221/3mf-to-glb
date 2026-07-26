@@ -729,15 +729,38 @@ const PAINT_FACE_BUDGET = 1_500_000;
  */
 const PAINT_BUDGET_MAX_DOUBLINGS = 8;
 
+/** Determinant of a 12-float column-major affine's 3x3 part. */
+function affineDeterminant(m: number[]): number {
+  return (
+    m[0] * (m[4] * m[8] - m[5] * m[7]) -
+    m[3] * (m[1] * m[8] - m[2] * m[7]) +
+    m[6] * (m[1] * m[5] - m[2] * m[4])
+  );
+}
+
 /** Uniform scale of a 12-float column-major affine's 3x3 part: cbrt(|det|). */
 function transformScaleFactor(m: number[] | null): number {
   if (!m || m.length < 9) return 1;
-  const det =
-    m[0] * (m[4] * m[8] - m[5] * m[7]) -
-    m[3] * (m[1] * m[8] - m[2] * m[7]) +
-    m[6] * (m[1] * m[5] - m[2] * m[4]);
-  const scale = Math.cbrt(Math.abs(det));
+  const scale = Math.cbrt(Math.abs(affineDeterminant(m)));
   return Number.isFinite(scale) && scale > 1e-9 ? scale : 1;
+}
+
+/**
+ * True when the transform reflects (negative determinant), which reverses the
+ * winding of every triangle it maps.
+ *
+ * Bambu writes `Right click > Mirror > Along X/Y/Z axis` exactly this way: a
+ * negative scale column in the build item's transform, e.g.
+ * `transform="1 0 0 0 1 0 0 0 -1 ..."`. Rendering is THREE.FrontSide
+ * (glbBuilder), so an uncorrected mirrored object culls its outward faces and
+ * draws its far interior instead: the model reads as hollow or translucent.
+ * The emitter below compensates by swapping two corners per face.
+ *
+ * See issue #9, and `samples/展翅鹦鹉【项目】U1.3mf` plate 2 object 9 (`加高.stl`,
+ * det = -1), which carries this in-repo.
+ */
+function transformReversesWinding(m: number[] | null): boolean {
+  return !!m && m.length >= 9 && affineDeterminant(m) < 0;
 }
 
 /**
@@ -1371,10 +1394,17 @@ function buildMeshChunkFromIndices(
   const positions = new Float32Array(faceCount * 9);
   const normals = new Float32Array(faceCount * 9);
 
+  // A reflecting transform reverses winding, so swap the last two corners to
+  // put the face back to CCW-outward. This is the single emit point for both
+  // the paint-subdivision path and the pid/basematerials path, so it covers
+  // every coloring mode. The face normal below is derived from the order we
+  // emit here, so it turns outward with no extra work.
+  const flip = transformReversesWinding(transform);
+
   for (let fi = 0; fi < faceCount; fi++) {
     const vA = vertices[indices[fi * 3]];
-    const vB = vertices[indices[fi * 3 + 1]];
-    const vC = vertices[indices[fi * 3 + 2]];
+    const vB = vertices[indices[fi * 3 + (flip ? 2 : 1)]];
+    const vC = vertices[indices[fi * 3 + (flip ? 1 : 2)]];
     if (!vA || !vB || !vC) continue;
 
     let [ax, ay, az] = [vA.x, vA.y, vA.z];
@@ -1619,20 +1649,25 @@ function clipTriangleAtZ(
   if (numAbove === 3) return { below: [], above: [[p0, p1, p2]] };
   if (numAbove === 0) return { below: [[p0, p1, p2]], above: [] };
 
-  // Identify the lone vertex (the one on its own side)
+  // Identify the lone vertex (the one on its own side). `other1` must be the
+  // lone vertex's CYCLIC SUCCESSOR and `other2` its predecessor, or the
+  // triangles emitted below come out reverse-wound, which back-face culling
+  // (FrontSide) then drops. The p1 case used to list the predecessor first,
+  // which silently inverted every triangle of every clipped band whose lone
+  // vertex happened to be p1.
   let lone: Vec3, other1: Vec3, other2: Vec3;
   let loneIsAbove: boolean;
 
   if (numAbove === 1) {
     loneIsAbove = true;
     if (a0) { lone = p0; other1 = p1; other2 = p2; }
-    else if (a1) { lone = p1; other1 = p0; other2 = p2; }
+    else if (a1) { lone = p1; other1 = p2; other2 = p0; }
     else { lone = p2; other1 = p0; other2 = p1; }
   } else {
     // numAbove === 2, lone is below
     loneIsAbove = false;
     if (!a0) { lone = p0; other1 = p1; other2 = p2; }
-    else if (!a1) { lone = p1; other1 = p0; other2 = p2; }
+    else if (!a1) { lone = p1; other1 = p2; other2 = p0; }
     else { lone = p2; other1 = p0; other2 = p1; }
   }
 
