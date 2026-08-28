@@ -84,7 +84,7 @@ A small note on how the file was produced (BambuStudio version, whether it uses
 3. If you add a new sample file that triggers a parsing edge case, drop it in
    `samples/` with a short note in the PR description.
 4. Use the PR template and fill in the test plan.
-5. Sign off every commit (see below).
+5. Sign off the commits in your PR (see below).
 
 ## Sign your work (DCO)
 
@@ -93,8 +93,13 @@ Contributions are accepted under the
 wrote the patch, or otherwise have the right to submit it under this project's
 MIT license. There is no separate CLA and you keep the copyright in your work.
 
-Certify it by adding a `Signed-off-by` line to each commit, which git writes
-for you with `-s`:
+This applies to contributions arriving by pull request. The maintainer's own
+commits are covered by authorship and are signed off at his discretion, so do
+not add a `Signed-off-by` line on someone else's behalf: it is a certification
+only the author can make.
+
+Certify your own commits by adding a `Signed-off-by` line, which git writes for
+you with `-s`:
 
 ```bash
 git commit -s -m "fix: handle empty colorgroup"
