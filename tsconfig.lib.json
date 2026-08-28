@@ -21,5 +21,10 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": false
   },
-  "include": ["src/lib/**/*.ts", "src/cli/**/*.ts", "src/types/**/*.ts"]
+  "include": ["src/lib/**/*.ts", "src/cli/**/*.ts", "src/types/**/*.ts"],
+  // arLauncher is demo glue, not library surface: nothing under src/lib or
+  // src/cli imports it, and its dynamic @google/model-viewer import would put
+  // a heavy browser dependency on every consumer of the package. The demo
+  // still imports it straight from src.
+  "exclude": ["src/lib/arLauncher.ts"]
 }
