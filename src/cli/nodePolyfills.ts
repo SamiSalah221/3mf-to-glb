@@ -7,6 +7,17 @@
 // supported from the CLI yet (no use case so far).
 //
 // MUST be imported BEFORE any module that imports GLTFExporter.
+//
+// Published as `printproof/node-polyfills` for exactly that reason: a Node
+// consumer calling convertToGLB / buildGLBBytes otherwise crashes with
+// "FileReader is not defined" from inside three, which says nothing about what
+// to do. Import it for its side effect before importing the library:
+//
+//   import 'printproof/node-polyfills';
+//   import { convertToGLB } from 'printproof';
+//
+// Every shim is installed only when the global is missing, so this is inert in
+// a browser and safe to import more than once.
 
 const g = globalThis as unknown as Record<string, unknown>;
 

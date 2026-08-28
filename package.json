@@ -48,6 +48,10 @@
       "types": "./dist-lib/lib/browser.d.ts",
       "import": "./dist-lib/lib/browser.js"
     },
+    "./node-polyfills": {
+      "types": "./dist-lib/cli/nodePolyfills.d.ts",
+      "import": "./dist-lib/cli/nodePolyfills.js"
+    },
     "./cli": {
       "types": "./dist-lib/cli/index.d.ts",
       "import": "./dist-lib/cli/index.js"
