@@ -1,11 +1,18 @@
 import JSZip from 'jszip';
 import type { ParseResult, Plate, MeshChunk, FilamentSlot, SourceUnit } from '../types/index.js';
 import { UNIT_TO_METERS } from '../types/index.js';
-import { parseXml } from './parseXml.js';
+import { parseXml, parseXmlLenient } from './parseXml.js';
 import { mixFilamentHex } from './filamentMixer.js';
 
 const DEBUG = false;
 const debugLog = (...args: unknown[]) => { if (DEBUG) console.log(...args); };
+
+// Optional archive parts are allowed to be missing or unreadable, and the
+// parser recovers from each. It must still say so: a swallowed error here once
+// cost every plate but the first on Node, silently, for months.
+const warnParse = (context: string, err: unknown) => {
+  console.warn(`[printproof] ${context}:`, err);
+};
 
 // ---- Internal types ----
 
@@ -132,7 +139,11 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
         mixedDefsRaw = json.mixed_filament_definitions;
       }
     }
-  } catch { /* not Bambu format */ }
+  } catch (err) {
+    // Not Bambu format, or the settings JSON is unreadable. Filament colors
+    // then come from the model's own material data.
+    warnParse('project_settings.config unreadable, falling back to model colors', err);
+  }
 
   // 3. Load model_settings.config for object/part metadata and plate assignments
   const objectMeta = new Map<string, ObjectMeta>();
@@ -142,7 +153,9 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
     const msFile = zip.file('Metadata/model_settings.config');
     if (msFile) {
       const msXml = await msFile.async('text');
-      const msDoc = parseXml(msXml);
+      // Lenient: vendors use undeclared prefixes here (slic3rpe:). A strict
+      // parser throwing used to cost every plate but the first.
+      const msDoc = parseXmlLenient(msXml);
 
       // Parse object metadata
       const objects = msDoc.getElementsByTagName('object');
@@ -207,7 +220,11 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
         plates.push({ id: plateId, name: plateName || `Plate ${plateId}`, thumbnailFile: thumbFile, objectIds });
       }
     }
-  } catch { /* no model settings */ }
+  } catch (err) {
+    // Without model settings there are no plate assignments, so everything
+    // collapses into the single-plate fallback below.
+    warnParse('model_settings.config unreadable, plate assignments lost', err);
+  }
 
   // 3b. Load custom_gcode_per_layer.xml for layer-based color changes (MultiAsSingle mode)
   let plateLayerConfigs: PlateLayerConfig[] = [];
@@ -215,13 +232,15 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
     const gcodeFile = zip.file('Metadata/custom_gcode_per_layer.xml');
     if (gcodeFile) {
       const gcodeXml = await gcodeFile.async('text');
-      const gcodeDoc = parseXml(gcodeXml);
+      const gcodeDoc = parseXmlLenient(gcodeXml);
       plateLayerConfigs = parseLayerColorChanges(gcodeDoc);
       if (plateLayerConfigs.length > 0) {
         debugLog(`[3MF Parser] Layer color changes found for ${plateLayerConfigs.length} plate(s)`);
       }
     }
-  } catch { /* no layer color changes */ }
+  } catch (err) {
+    warnParse('custom_gcode_per_layer.xml unreadable, layer color changes skipped', err);
+  }
 
   // 4. Parse root model build items and resolve components to geometry
   const ns = rootDoc.documentElement.namespaceURI || '';
@@ -378,7 +397,9 @@ export async function parse3MF(buffer: ArrayBuffer | Uint8Array): Promise<ParseR
             const blob = await thumbFile.async('blob');
             thumbnailUrl = URL.createObjectURL(blob);
           }
-        } catch { /* no thumb */ }
+        } catch (err) {
+          warnParse(`plate ${plateInfo.id} thumbnail unreadable`, err);
+        }
       }
 
       const filamentIndicesUsed = [...new Set(meshChunks.map(c => c.filamentIndex))].sort((a, b) => a - b);

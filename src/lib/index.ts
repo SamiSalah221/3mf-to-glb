@@ -25,6 +25,7 @@ export {
   setDefaultDomParser,
   getDefaultDomParser,
   parseXml,
+  parseXmlLenient,
 } from './parseXml.js';
 export type { DomParserLike } from './parseXml.js';
 

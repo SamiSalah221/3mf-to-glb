@@ -329,6 +329,48 @@ if (parrotName) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Plate counts on the Node path
+//
+// Vendors write Metadata/model_settings.config with undeclared namespace
+// prefixes (slic3rpe:). @xmldom/xmldom rejects that where the browser
+// DOMParser accepts it, and the parser used to swallow the error, so on Node
+// every plate but the first silently disappeared. The parrot fixture is the
+// one that carries such a prefix; it must report both of its plates, and
+// converting the SECOND plate must work rather than throwing "Plate 2 not
+// found". Fixtures absent from this checkout are skipped.
+// ---------------------------------------------------------------------------
+
+const EXPECTED_PLATES = [
+  { match: (n) => n === 'kuwait.3mf', plates: 2 },
+  { match: (n) => n === 'turkey.3mf', plates: 2 },
+  { match: (n) => n === 'hijri-calendar.3mf', plates: 4 },
+  { match: (n) => n === 'watchful-owl.3mf', plates: 1 },
+  { match: (n) => n.includes('U1') && !n.includes('sea'), plates: 2 },
+];
+
+for (const { match, plates: expected } of EXPECTED_PLATES) {
+  const name = SAMPLES.find(match);
+  if (!name) continue;
+  try {
+    const buf = await readFile(resolve('samples', name));
+    const parsed = await parse3MF(buf);
+    if (parsed.plates.length !== expected) {
+      throw new Error(`plates=${parsed.plates.length} expected ${expected}`);
+    }
+    // Converting the last plate proves plate selection works end to end, not
+    // just that the count looks right.
+    const lastId = parsed.plates[parsed.plates.length - 1].id;
+    const glb = await convertToGLB(buf, { plateId: lastId });
+    if (new DataView(glb.buffer, glb.byteOffset).getUint32(0, true) !== GLB_MAGIC) {
+      throw new Error(`plate ${lastId} did not produce a GLB`);
+    }
+    reportPass(`${name}: ${expected} plate(s), plate ${lastId} converts`);
+  } catch (err) {
+    reportFail(`${name} plate count`, err);
+  }
+}
+
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail === 0 ? 0 : 1);
 
