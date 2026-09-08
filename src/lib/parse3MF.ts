@@ -1505,6 +1505,8 @@ function parseLayerColorChanges(doc: Document): PlateLayerConfig[] {
         plateId = parseInt(el.getAttribute('id') || '0', 10);
       }
       if (el.tagName === 'layer') {
+        // Only explicit ColorChange entries assign colors. Missing types are not color changes.
+        if (el.getAttribute('type') !== '0') continue;
         const topZ = parseFloat(el.getAttribute('top_z') || '0');
         const extruder = parseInt(el.getAttribute('extruder') || '1', 10);
         changes.push({ topZ, extruder });

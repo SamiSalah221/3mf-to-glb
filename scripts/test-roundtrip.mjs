@@ -16,6 +16,7 @@
 //      asset.extras.dimensions_mm MUST report 100 x 100 x 100.
 
 import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DOMParser } from '@xmldom/xmldom';
@@ -57,6 +58,35 @@ for (const name of SAMPLES) {
   const buf = await readFile(path);
   try {
     const parsed = await parse3MF(buf);
+    if (name === 'forge-pause-keychain.3mf') {
+      assert.equal(parsed.filaments.length, 2);
+      const chunks = parsed.plates.flatMap(p => p.meshChunks);
+      assert.deepStrictEqual(chunks.map(c => c.filamentIndex).sort((a, b) => a - b), [1, 2]);
+
+      const zip = await JSZip.loadAsync(buf);
+      let writtenTriangles = 0;
+      for (const entry of Object.values(zip.files)) {
+        if (entry.dir || !entry.name.endsWith('.model')) continue;
+        const doc = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
+        writtenTriangles += doc.getElementsByTagNameNS('*', 'triangle').length;
+      }
+      assert.ok(writtenTriangles > 0);
+      assert.equal(chunks.reduce((sum, c) => sum + c.faceCount, 0), writtenTriangles);
+      assert.equal(chunks.reduce((sum, c) => sum + c.positions.length / 9, 0), writtenTriangles);
+
+      const metadataPath = 'Metadata/custom_gcode_per_layer.xml';
+      const metadata = await zip.file(metadataPath).async('text');
+      zip.remove(metadataPath);
+      const withoutEntry = await parse3MF(await zip.generateAsync({ type: 'uint8array' }));
+      const expectedChunks = withoutEntry.plates.map(p => p.meshChunks);
+      assert.deepStrictEqual(parsed.plates.map(p => p.meshChunks), expectedChunks);
+      for (const type of ['2', '3', '99', null]) {
+        zip.file(metadataPath, metadata.replace(/type="1"/, type === null ? '' : `type="${type}"`));
+        const ignored = await parse3MF(await zip.generateAsync({ type: 'uint8array' }));
+        assert.deepStrictEqual(ignored.plates.map(p => p.meshChunks), expectedChunks);
+      }
+      reportPass(`${name}: chunks [1, 2], ${writtenTriangles} triangles match archive, ignored entries preserve chunks`);
+    }
     const mapping = Object.fromEntries(parsed.filaments.map((f) => [f.index, TARGET]));
 
     const recolored = applyRecolor(parsed, mapping);
