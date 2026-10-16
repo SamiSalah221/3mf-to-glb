@@ -9,6 +9,16 @@ import { mixFilamentHex } from '../lib/filamentMixer';
 /** Camera projection for the viewport. Session-only, not persisted. */
 type CameraProjection = 'perspective' | 'orthographic';
 
+/** Which version of the part is on screen: the design model or the as-printed one. */
+export type ViewMode = 'model' | 'printed';
+
+const kindOf = (r: ParseResult): ViewMode => (r.sourceKind === 'gcode' ? 'printed' : 'model');
+
+/** Same plate id in the other version when it has one, else its first plate. */
+function plateIn(result: ParseResult, plateId: number | null): number | null {
+  return result.plates.find((p) => p.id === plateId)?.id ?? result.plates[0]?.id ?? null;
+}
+
 /** Read the one-time orbit-hint dismissal flag from localStorage. */
 function readOrbitHintSeen(): boolean {
   try {
@@ -38,8 +48,17 @@ interface AppStore {
   isParsed: boolean;
   error: string | null;
 
-  // Parsed data
+  // Parsed data. This is the version on screen; with both a design 3MF and
+  // its sliced G-code loaded it is one of `versions` (see viewMode).
   parseResult: ParseResult | null;
+
+  // The two versions of a part: the design model (.3mf) and the as-printed
+  // model built from sliced G-code. Either may be missing.
+  versions: { model: ParseResult | null; printed: ParseResult | null };
+  viewMode: ViewMode;
+  // Bumped on every Model / As printed switch, so the camera keeps its angle
+  // across the swap instead of re-homing.
+  viewToggleSeq: number;
 
   // Filament colors (global across all plates)
   filaments: FilamentSlot[];
@@ -88,6 +107,9 @@ interface AppStore {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setParsed: (result: ParseResult) => void;
+  /** Load the other version of the current part (G-code next to a 3MF, or the reverse) and show it. */
+  addVersion: (result: ParseResult) => void;
+  setViewMode: (mode: ViewMode) => void;
   setCurrentPlate: (plateId: number) => void;
   selectFilament: (index: number | null) => void;
   setFilamentColor: (index: number, color: string) => void;
@@ -113,6 +135,9 @@ export const useAppStore = create<AppStore>((set) => ({
   isParsed: false,
   error: null,
   parseResult: null,
+  versions: { model: null, printed: null },
+  viewMode: 'model',
+  viewToggleSeq: 0,
   filaments: [],
   currentPlateId: null,
   selectedFilamentIndex: null,
@@ -133,12 +158,47 @@ export const useAppStore = create<AppStore>((set) => ({
 
   setParsed: (result) => set({
     parseResult: result,
+    versions: { model: null, printed: null, [kindOf(result)]: result },
+    viewMode: kindOf(result),
     filaments: result.filaments,
     isParsed: true,
     isLoading: false,
     // Auto-select first non-empty plate
     currentPlateId: result.plates[0]?.id ?? null,
   }),
+
+  addVersion: (result) =>
+    set((state) => {
+      const mode = kindOf(result);
+      // Filaments are shared by both versions, so a recolor shows on either.
+      // Keep the current slots (their edits and mixes) and add any the new
+      // version uses that the current one lacks.
+      const known = new Set(state.filaments.map((f) => f.index));
+      const filaments = [...state.filaments, ...result.filaments.filter((f) => !known.has(f.index))]
+        .sort((a, b) => a.index - b.index);
+      return {
+        versions: { ...state.versions, [mode]: result },
+        viewMode: mode,
+        parseResult: result,
+        filaments,
+        currentPlateId: plateIn(result, state.currentPlateId),
+        selectedFilamentIndex: null,
+        viewToggleSeq: state.viewToggleSeq + 1,
+      };
+    }),
+
+  setViewMode: (mode) =>
+    set((state) => {
+      const next = state.versions[mode];
+      if (!next || state.viewMode === mode) return state;
+      return {
+        viewMode: mode,
+        parseResult: next,
+        currentPlateId: plateIn(next, state.currentPlateId),
+        selectedFilamentIndex: null,
+        viewToggleSeq: state.viewToggleSeq + 1,
+      };
+    }),
 
   setCurrentPlate: (plateId) => set({ currentPlateId: plateId, selectedFilamentIndex: null }),
 
@@ -209,6 +269,8 @@ export const useAppStore = create<AppStore>((set) => ({
       isParsed: false,
       error: null,
       parseResult: null,
+      versions: { model: null, printed: null },
+      viewMode: 'model',
       filaments: [],
       currentPlateId: null,
       selectedFilamentIndex: null,

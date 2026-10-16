@@ -1,6 +1,7 @@
 import { useAppStore } from '../store/useAppStore';
 import { DimensionsReadout } from './DimensionsReadout';
 import { SwatchSquare } from './SwatchSquare';
+import { VersionToggle } from './VersionToggle';
 
 /** Floating overlay pieces rendered on top of the 3D viewport. */
 export function ViewportChrome() {
@@ -77,6 +78,9 @@ export function ViewportChrome() {
           ))}
         </div>
       )}
+
+      {/* Top-center: Model / As printed */}
+      <VersionToggle />
 
       {/* Bottom-right: dimensions readout */}
       <DimensionsReadout />

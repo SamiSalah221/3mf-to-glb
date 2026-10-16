@@ -6,6 +6,7 @@ import { ExportButton } from './ExportButton';
 import { CustomizerPanel } from './CustomizerPanel';
 import { ViewportChrome } from './ViewportChrome';
 import { DimensionsReadout } from './DimensionsReadout';
+import { VersionToggle } from './VersionToggle';
 import { ViewerCanvas } from '../viewer/ViewerCanvas';
 import { useAppStore } from '../store/useAppStore';
 import { usePersistentState } from '../hooks/usePersistentState';
@@ -128,6 +129,9 @@ export function EditorScreen() {
               >
                 New file
               </button>
+              <div className="absolute top-14 inset-x-0">
+                <VersionToggle />
+              </div>
               <DimensionsReadout />
             </>
           )}

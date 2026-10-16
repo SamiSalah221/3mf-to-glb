@@ -9,7 +9,8 @@ For the on-disk 3MF format itself, see [`3MF-COLOR-RESOLUTION-TECHNICAL-SPEC.md`
 The app is a **pure client-side pipeline** that converts Bambu Studio `.3mf` archives into recolorable GLB exports. No backend.
 
 ```
-.3mf (ZIP) → parse3MF() → ParseResult { plates[], filaments[] }
+.3mf (ZIP) → parse3MF() ──────────┐
+.gcode / .gcode.3mf → parseGcode() ┴→ ParseResult { plates[], filaments[] }
                               │
                               ▼ (per plate)
             buildSceneFromPlate() → THREE.Group (one Mesh per chunk)
@@ -144,9 +145,32 @@ data.
 
 `glbBuilder.ts` sets `side: THREE.FrontSide` on `MeshStandardMaterial`. Don't flip this to `DoubleSide` unless you've confirmed the target 3MF has non-manifold meshes. 3MF files are slicer output → watertight with consistent CCW winding, so back-face culling is safe and **necessary** here: with `DoubleSide`, painted-region back faces bleed through the model at oblique camera angles and create phantom color zones.
 
+## As-printed models from G-code (`src/lib/parseGcode.ts`, `src/lib/gcode/`)
+
+A sliced `.gcode` / `.gcode.3mf` goes through `parseGcode` instead of `parse3MF` and comes out as the same `ParseResult` (plates of per-filament `MeshChunk`s in millimetres), with `sourceKind: 'gcode'`. Everything downstream (scene build, recolor, GLB / USDZ / OBJ, AR) is shared.
+
+- **`readGcode.ts`** turns the toolpath into extrusion segments. Rules that are easy to get wrong:
+  - **`G90` does not reset the E mode.** Slicers emit `M83` then `G90`; Klipper and the slicers keep E relative. Treating `G90` as "E absolute" makes every move after it read as a retraction.
+  - **Bambu's `T255`, `T1000`, `T1100` are service codes**, not tools. Only `T0`..`T99` change the filament; otherwise a fake filament 1001 appears.
+  - Arcs (`G2`/`G3`, both I/J and R forms) are split into chords; Bambu and Orca arc-fit heavily.
+- **`beads.ts`** sweeps a stadium cross-section (flat top and bottom, round sides) along each joined run of moves. Its width comes from the plastic pushed, `area = E·π(d/2)² / length = (w − h)·h + π(h/2)²`, clamped near the slicer's `;WIDTH:` / `; LINE_WIDTH:` value; the toolpath Z is the top of the bead. Sharp corners (> 80°) start a new bead with end caps instead of a spiky mitre.
+  - By default only what shows on the finished part is kept: outer walls, skins, bridges, overhangs, gap fill. Inner walls are kept only within a few layers of a top, bottom, bridge or overhang (where they show at rims and steps). Infill, supports, skirt, brim, prime tower and ironing are dropped. This cuts a typical part to about a third.
+  - Chunks are flagged `smoothShaded`; the GLB and USDZ exporters weld those (`weldSmoothMeshes`) into indexed geometry, about 2.5× smaller with the same shading. 3MF chunks are not flagged and export exactly as before.
+- **`src/workers/parseGcode.worker.ts`**: the web app parses G-code off the main thread and transfers the mesh buffers back. The library and CLI call `parseGcode` directly.
+- **Detection (`isGcodeFile`)**: a zip counts as G-code only when it holds plate G-code **and no mesh** in `3D/*.model`, because a saved Bambu project can carry plate G-code next to its design meshes.
+- **3MF write-back** is disabled for G-code sources; there is no source 3MF to re-tint.
+
+## Two versions of one part: Model / As printed
+
+The store keeps `versions: { model, printed }` and `viewMode`; `parseResult` is always the version on screen, so every existing consumer works unchanged. `addVersion` loads the other version (G-code next to a 3MF or the reverse) and `setViewMode` switches.
+
+- **Filaments are shared.** `addVersion` keeps the current slots (their edits and mixes) and only adds indices the new version uses, so a recolor shows on both. G-code tool `T0` is filament 1, as in the slicer.
+- **No registration step.** Both versions are centred and floored by the same pivot rules, so a G-code sliced from the same project lines up by its bounding box. If the slicer scaled the part, `VersionToggle` reports it ("Printed at 116% of the model"); the as-printed version is the true size.
+- **The camera keeps its angle on a switch.** `setViewMode` / `addVersion` bump `viewToggleSeq`; `CameraRig` sees the bump when the rebuilt scene publishes its dimensions and only follows the new bbox centre instead of re-homing. Any other change (plate, projection) still re-homes.
+
 ## State (`src/store/useAppStore.ts`)
 
-Single Zustand store. Flow: `setFile` → `setLoading` → `setParsed(result)` (sets `isParsed=true`, auto-selects first plate) → user edits `filaments` via `setFilamentColor`. `App.tsx` switches between `UploadScreen` / `LoadingScreen` / `EditorScreen` based on these flags.
+Single Zustand store. Flow: `setFile` → `setLoading` → `setParsed(result)` (sets `isParsed=true`, auto-selects first plate) → user edits `filaments` via `setFilamentColor`. `App.tsx` switches between `UploadScreen` / `LoadingScreen` / `EditorScreen` based on these flags. With a design and its G-code loaded, see *Two versions of one part* above.
 
 ## Stack conventions
 

@@ -119,6 +119,16 @@ before you make it.
   averaging — so a navy + yellow blend renders the actual green the slicer
   would produce, not a muddy average. See
   [`docs/SNAPMAKER_FULL_SPECTRUM.md`](./docs/SNAPMAKER_FULL_SPECTRUM.md).
+- **As-printed model from sliced G-code.** Open a `.gcode` or `.gcode.3mf`
+  and get the part as it will print: a bead of plastic is swept along every
+  extruding move, sized from the plastic it pushes, so every layer line,
+  seam and infill direction in the preview is the real one. Load it next to
+  the design `.3mf` and switch between **Model** and **As printed** in the
+  same view and colors; if the slicer scaled the part, the viewer says so.
+  Recolor, GLB / USDZ / OBJ export and AR work on it like on any model.
+  Reads PrusaSlicer, OrcaSlicer, Bambu Studio and Snapmaker U1 G-code
+  (arcs, relative or absolute E, multi-tool). Parsed in a Web Worker,
+  still on your device.
 - **Interactive 3D editor.** Recolor any zone with a color picker; changes
   update live in the Three.js viewport.
 - **PBR GLB export.** One glTF material per color zone, correct sRGB to
@@ -212,6 +222,9 @@ npx 3mf-to-glb model.3mf --rotation "90,0,0" -o yup.glb
 
 # Write a per-vertex-color Wavefront OBJ instead (one self-contained file):
 npx 3mf-to-glb model.3mf -o model.obj
+
+# Build the as-printed model from sliced G-code (every bead, every layer line):
+npx 3mf-to-glb model.gcode.3mf -o as-printed.glb
 ```
 
 Flags:
@@ -223,6 +236,8 @@ Flags:
 | `--recolor <map>` | Comma-separated `index=hex` pairs applied before export. Hex may include or omit the leading `#`. |
 | `--pivot <mode>` | Export pivot: `base-center` (default), `bbox-center`, `centroid`, `original`, `custom`. |
 | `--rotation <x,y,z>` | XYZ Euler rotation in degrees, baked into geometry before the pivot. Try `"90,0,0"` to reorient a Z-up source to glTF Y-up. |
+| `--gcode-detail <d>` | G-code input: `visible` (default; walls and skins, what shows on the finished part) or `all` (every extrusion, including infill). |
+| `--supports` | G-code input: keep support material. |
 | `-h, --help` | Show full help. |
 
 ## Use it from your own code (library)

@@ -69,6 +69,9 @@ function CameraRig({ controlsRef }: { controlsRef: React.RefObject<OrbitControls
   const dimensions = useAppStore((s) => s.dimensions);
   const bboxCenterM = useAppStore((s) => s.bboxCenterM);
   const cameraProjection = useAppStore((s) => s.cameraProjection);
+  const viewToggleSeq = useAppStore((s) => s.viewToggleSeq);
+  const lastToggleSeq = useRef(viewToggleSeq);
+  const lastTarget = useRef<THREE.Vector3 | null>(null);
 
   useEffect(() => {
     // The wrapper group scales the meters-baked scene by DISPLAY_FRAME /
@@ -84,6 +87,21 @@ function CameraRig({ controlsRef }: { controlsRef: React.RefObject<OrbitControls
         bboxCenterM[2] * displayScale,
       );
     }
+
+    // A Model / As printed switch rebuilds the scene (new dimensions, new
+    // bbox) but is a comparison: keep the user's angle and distance and only
+    // follow the target, instead of re-homing.
+    const controls0 = controlsRef.current;
+    if (viewToggleSeq !== lastToggleSeq.current && lastTarget.current && controls0) {
+      lastToggleSeq.current = viewToggleSeq;
+      camera.position.add(target.clone().sub(lastTarget.current));
+      controls0.target.copy(target);
+      controls0.update();
+      lastTarget.current = target;
+      return;
+    }
+    lastToggleSeq.current = viewToggleSeq;
+    lastTarget.current = target;
 
     camera.up.set(...CAMERA_HOME.up);
     camera.position.set(
@@ -102,6 +120,9 @@ function CameraRig({ controlsRef }: { controlsRef: React.RefObject<OrbitControls
     // cameraProjection is a dep so a perspective/ortho toggle re-homes the
     // (newly default) camera to the correct framing. Rotations are NOT a dep,
     // so per-model orientation edits never move the camera.
+    // viewToggleSeq is read, not a dep: the rebuild after a switch is what
+    // runs this effect (via dimensions / bboxCenterM).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPlateId, camera, controlsRef, bboxCenterM, dimensions, cameraProjection]);
 
   return null;
