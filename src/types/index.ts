@@ -79,6 +79,14 @@ export interface ParseResult {
    * only applies to '3mf'.
    */
   sourceKind?: '3mf' | 'gcode';
+  /** G-code sources: what the slicer wrote about the print (first plate), for display. */
+  printInfo?: {
+    slicer?: string;
+    nozzleMm?: number;
+    layerHeightMm?: number;
+    layers?: number;
+    estimatedTime?: string;
+  };
 }
 
 /**

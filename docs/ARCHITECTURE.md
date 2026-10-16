@@ -168,6 +168,17 @@ The store keeps `versions: { model, printed }` and `viewMode`; `parseResult` is 
 - **No registration step.** Both versions are centred and floored by the same pivot rules, so a G-code sliced from the same project lines up by its bounding box. If the slicer scaled the part, `VersionToggle` reports it ("Printed at 116% of the model"); the as-printed version is the true size.
 - **The camera keeps its angle on a switch.** `setViewMode` / `addVersion` bump `viewToggleSeq`; `CameraRig` sees the bump when the rebuilt scene publishes its dimensions and only follows the new bbox centre instead of re-homing. Any other change (plate, projection) still re-homes.
 
+## The interface: a proof sheet (`src/components/proof/`)
+
+The UI reads as a print shop's proof sheet, in dark: the 3D view sits on a sheet with crop marks (`ProofSheet`), the filaments run under it as a press color bar (`ColorBar`, clickable: same as clicking a zone on the model), and the right column is a job ticket that walks the job through four steps, `Open ✓ · Color · Proof · Sign off` (`StepNav`, `Tickets.tsx`). The steps are views over the same state, not a wizard: any step can be opened at any time, and the model, colors and camera stay put across them.
+
+- **Open** (`UploadScreen`): takes a design `.3mf`, its sliced G-code, or both in one drop (`useOpenFiles` parses both before the editor opens, then shows the design).
+- **Color**: zone list with face counts, the picker (incl. Snapmaker mix slots) and presets.
+- **Proof**: the Design / As printed switch on the sheet, the slicer's facts read from the G-code (`ParseResult.printInfo`: slicer, nozzle, layers, time), and the "size changed" note when the slicer scaled the part (`useVersionInfo`). With one version loaded it offers to add the other (`useAddVersion`).
+- **Sign off**: which version to export, GLB / AR / OBJ / 3MF, pivot and orientation.
+
+Theme tokens live in `src/styles/globals.css` (`@theme`): neutral greys (the WYSIWYG rule below still holds: no tinted surround), IBM Plex Sans / Mono, and all `rounded-*` radii set to 0 (a proof sheet has no rounded cards; `rounded-full` dots and spinners are unaffected). Primary actions are ink on paper (`bg-tx text-bg`); the orange accent is rationed to step labels, links and warnings.
+
 ## State (`src/store/useAppStore.ts`)
 
 Single Zustand store. Flow: `setFile` → `setLoading` → `setParsed(result)` (sets `isParsed=true`, auto-selects first plate) → user edits `filaments` via `setFilamentColor`. `App.tsx` switches between `UploadScreen` / `LoadingScreen` / `EditorScreen` based on these flags. With a design and its G-code loaded, see *Two versions of one part* above.

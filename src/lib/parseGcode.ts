@@ -91,12 +91,14 @@ export async function parseGcode(
 
   const plates: Plate[] = [];
   let colours: string[] = [];
+  let printInfo: ParseResult['printInfo'];
   let maxTool = 0;
   for (const src of sources) {
     opts.onProgress?.(`Reading toolpath of ${src.name.toLowerCase()}`);
     const read = readGcode(src.text);
     if (!read.segments.length) continue;
     if (!colours.length) colours = read.colours;
+    if (!printInfo) printInfo = read.info;
     opts.onProgress?.(`Building beads for ${src.name.toLowerCase()}`);
     const { chunks } = buildBeadChunks(read.segments, read.filamentDiameter, opts, `plate${src.id}`);
     if (!chunks.length) continue;
@@ -130,5 +132,6 @@ export async function parseGcode(
     sourceUnit: 'millimeter',
     unitToMeters: UNIT_TO_METERS.millimeter,
     sourceKind: 'gcode',
+    printInfo,
   };
 }

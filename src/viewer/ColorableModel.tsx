@@ -26,8 +26,8 @@ const GRID_SECTION_M = 0.05; // 50 mm coarse cells
 // Grid line colors, tuned to read over the viewport's neutral Cool Slate
 // gradient (there is no opaque plate mesh anymore, so the grid floats over
 // it directly). Kept low-chroma to match the neutral studio backdrop.
-const GRID_COLOR_FINE = '#28313F';
-const GRID_COLOR_COARSE = '#3C4A5E';
+const GRID_COLOR_FINE = '#24262B';
+const GRID_COLOR_COARSE = '#3A3D44';
 
 export function ColorableModel() {
   const parseResult = useAppStore((s) => s.parseResult);

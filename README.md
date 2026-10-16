@@ -34,8 +34,8 @@ OrcaSlicer, or Snapmaker U1 file; they share the same on-disk encoding.
 **→ <https://samisalah221.github.io/3mf-to-glb/>**
 
 No sign-up, no upload. If you don't have a `.3mf` handy, hit
-**"Try sample · owl (Bambu)"** or **"Try sample · sea slug (U1)"** on the
-upload screen, or grab one of the fixtures in [`samples/`](./samples) and
+**"Owl · Bambu"** or **"Sea slug · Snapmaker U1"** on the
+open screen, or grab one of the fixtures in [`samples/`](./samples) and
 drop it on the page.
 
 > **Snapmaker U1 Innovation Fund submission:** project description and

@@ -18,7 +18,8 @@ function format(value: number, unit: DisplayUnit): string {
 
 const ORDER: DisplayUnit[] = ['mm', 'cm', 'inch'];
 
-export function DimensionsReadout() {
+/** Click to cycle units. `inline` renders it as a proof sheet's mono label instead of a floating chip. */
+export function DimensionsReadout({ inline = false }: { inline?: boolean }) {
   const dimensions = useAppStore((s) => s.dimensions);
   const [unit, setUnit] = useState<DisplayUnit>('mm');
 
@@ -30,6 +31,19 @@ export function DimensionsReadout() {
   };
 
   const { x, y, z } = dimensions.mm;
+
+  if (inline) {
+    return (
+      <button
+        type="button"
+        onClick={cycle}
+        title="Click to switch units"
+        className="font-mono text-[12px] text-tx2 hover:text-tx transition-colors"
+      >
+        W {format(x, unit)} · H {format(y, unit)} · D {format(z, unit)}
+      </button>
+    );
+  }
 
   return (
     <button

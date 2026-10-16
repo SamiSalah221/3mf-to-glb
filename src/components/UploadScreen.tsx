@@ -1,52 +1,34 @@
 import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useAppStore } from '../store/useAppStore';
-import { parse3MF } from '../lib/parse3MF';
-import { isGcodeFile } from '../lib/parseGcode';
-import { parseGcodeInWorker } from '../workers/parseGcodeInWorker';
+import { useOpenFiles } from '../hooks/useOpenFiles';
+import { Logo } from './Logo';
+import { Caps, ProofSheet, TicketHeading } from './proof/primitives';
+import { PRIMARY, SECONDARY } from './proof/constants';
 
 const SAMPLES_BASE_URL =
   'https://raw.githubusercontent.com/SamiSalah221/3mf-to-glb/master/samples/';
 
 const SAMPLES = [
-  { label: 'Owl sample (Bambu)', filename: 'watchful-owl.3mf', downloadName: 'owl-sample.3mf' },
+  { label: 'Owl · Bambu', filename: 'watchful-owl.3mf', downloadName: 'owl-sample.3mf' },
   {
-    label: 'Sea slug sample (Snapmaker U1)',
+    label: 'Sea slug · Snapmaker U1',
     filename: '海蛞蝓【项目】U1  sea.3mf',
     downloadName: 'u1-sample.3mf',
   },
 ];
 
+const TICKET = [
+  { n: 1, title: 'Open', body: 'A design, a sliced print, or both of the same part.' },
+  { n: 2, title: 'Color', body: 'Every painted zone, decoded exactly; recolor any of them.' },
+  { n: 3, title: 'Proof', body: 'The design next to the part as printed, at true size.' },
+  { n: 4, title: 'Sign off', body: 'GLB, USDZ for AR, OBJ, or a re-tinted 3MF that still slices.' },
+];
+
 export function UploadScreen() {
-  const { setFile, setLoading, setError, setParsed } = useAppStore();
+  const { setLoading, setError } = useAppStore();
+  const openFiles = useOpenFiles();
   const [loadingSample, setLoadingSample] = useState<string | null>(null);
-
-  const loadBuffer = useCallback(
-    async (file: File) => {
-      setFile(file);
-      setLoading(true);
-      try {
-        const buffer = await file.arrayBuffer();
-        // Sliced G-code (.gcode, or a .gcode.3mf plate export) gives the
-        // as-printed model, built from the toolpath.
-        const result = (await isGcodeFile(buffer))
-          ? await parseGcodeInWorker(buffer)
-          : await parse3MF(buffer);
-        setParsed(result);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to parse file');
-      }
-    },
-    [setFile, setLoading, setError, setParsed],
-  );
-
-  const onDrop = useCallback(
-    async (accepted: File[]) => {
-      const file = accepted[0];
-      if (file) await loadBuffer(file);
-    },
-    [loadBuffer],
-  );
 
   const onTrySample = useCallback(
     async (sample: (typeof SAMPLES)[number]) => {
@@ -56,106 +38,114 @@ export function UploadScreen() {
         const res = await fetch(SAMPLES_BASE_URL + encodeURIComponent(sample.filename));
         if (!res.ok) throw new Error(`Sample download failed (${res.status})`);
         const bytes = new Uint8Array(await res.arrayBuffer());
-        const file = new File([new Uint8Array(bytes)], sample.downloadName, { type: 'model/3mf' });
-        await loadBuffer(file);
+        await openFiles([new File([bytes], sample.downloadName, { type: 'model/3mf' })]);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load sample file');
       } finally {
         setLoadingSample(null);
       }
     },
-    [loadBuffer, setLoading, setError],
+    [openFiles, setLoading, setError],
   );
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+    onDrop: (files) => void openFiles(files),
     accept: {
       'application/vnd.ms-package.3dmanufacturing-3dmodel+xml': ['.3mf'],
       'text/x-gcode': ['.gcode'],
     },
-    multiple: false,
+    multiple: true,
+    maxFiles: 2,
+    noClick: true,
   });
 
   return (
-    <div className="h-full flex items-center justify-center bg-bg">
-      <div className="flex flex-col items-center gap-6">
-        {/* Drop zone card */}
-        <div
-          {...getRootProps()}
-          className={`w-[560px] max-w-[90vw] border rounded-lg p-14 text-center cursor-pointer transition-all duration-200 ${
-            isDragActive
-              ? 'border-accent bg-panel shadow-[inset_0_0_40px_rgba(109,90,230,0.18)]'
-              : 'border-line bg-panel hover:border-line2 hover:bg-panel2'
-          }`}
-        >
-          <input {...getInputProps()} />
+    <div className="h-full overflow-y-auto cc-scroll bg-bg text-tx">
+      <header className="flex items-center justify-between flex-wrap gap-4 px-6 lg:px-10 py-4 border-b border-line">
+        <div className="flex items-center gap-3.5">
+          <Logo className="w-7 h-7 text-tx" />
+          <span className="font-bold text-[18px] tracking-[-0.01em]">Printproof</span>
+          <Caps className="text-tx3">Job — new</Caps>
+        </div>
+        <span className="font-mono text-[12px] text-tx2">Runs on this device · nothing is uploaded</span>
+      </header>
 
-          {/* Build-plate cube icon */}
-          <div className="flex justify-center text-tx3 mb-6 select-none">
-            <svg
-              width="28"
-              height="28"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 2.5 21 7v10l-9 4.5L3 17V7z" />
-              <path d="M3 7l9 4.5L21 7" />
-              <path d="M12 11.5V21.5" />
+      <main className="flex flex-wrap gap-10 px-6 lg:px-10 py-8 lg:py-12 max-w-[1360px] mx-auto">
+        <ProofSheet className="flex-[999_1_640px] min-w-0 p-8 lg:p-14 flex flex-col gap-7" markSize={22}>
+          <Caps className="text-accent">Step 1 of 4 · Open</Caps>
+          <h1 className="m-0 text-[44px] lg:text-[64px] leading-[1.02] font-bold tracking-[-0.03em] max-w-[720px]">
+            Pull a proof before you pull the filament.
+          </h1>
+          <p className="m-0 text-[17px] lg:text-[18px] leading-relaxed text-tx2 max-w-[600px]">
+            Drop the design .3mf, its sliced .gcode, or both. Colors come straight from the slicer; the
+            G-code shows every layer line the printer will lay down.
+          </p>
+
+          <div
+            {...getRootProps()}
+            className={`relative flex flex-col items-center justify-center gap-3.5 min-h-[240px] border-[1.5px] border-dashed text-center p-6 transition-colors ${
+              isDragActive ? 'border-accent bg-panel3' : 'border-line3 bg-panel2'
+            }`}
+          >
+            <input {...getInputProps()} aria-label="Choose a .3mf, a .gcode, or both" />
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-tx">
+              <path d="M20 26V8M13 15l7-7 7 7" />
+              <path d="M6 26v6h28v-6" />
             </svg>
+            <span className="text-[20px] font-semibold">{isDragActive ? 'Drop to open' : 'Drop files here'}</span>
+            <span className="font-mono text-[13px] text-tx2">.3mf · .gcode · .gcode.3mf — one or both</span>
           </div>
 
-          <h1 className="text-xl font-semibold text-tx mb-2">
-            {isDragActive ? 'Drop to open' : 'Drop a multi-color .3mf or sliced G-code'}
-          </h1>
-
-          <p className="text-tx2 text-sm mb-3">
-            See your colors before you print. Printproof keeps them accurate from slicer to screen to AR.
-          </p>
-
-          <p className="text-tx3 text-xs leading-relaxed">
-            Works with Bambu Studio, OrcaSlicer, and Snapmaker U1. A sliced .gcode or .gcode.3mf shows the part as
-            it will print, every layer line included. Files are parsed on your device and never uploaded.
-          </p>
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <label className="h-11 px-5 flex items-center bg-accent hover:bg-accent-hover active:bg-accent-active text-accent-fg text-sm font-semibold rounded-md cursor-pointer transition-colors active:scale-[0.98]">
-            Browse file
-            <input
-              type="file"
-              accept=".3mf,.gcode"
-              className="sr-only"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) loadBuffer(f);
-              }}
-            />
-          </label>
-          {SAMPLES.map((sample) => {
-            const isLoadingThis = loadingSample === sample.filename;
-            return (
+          <div className="flex flex-wrap gap-3 items-center">
+            <button type="button" onClick={open} className={PRIMARY}>
+              Choose files
+            </button>
+            <span className="text-[14px] text-tx2">or try a sample:</span>
+            {SAMPLES.map((sample) => (
               <button
                 key={sample.filename}
                 type="button"
                 onClick={() => onTrySample(sample)}
                 disabled={loadingSample !== null}
-                className="h-11 px-5 flex items-center gap-2 bg-panel2 hover:bg-panel3 border border-line hover:border-line2 disabled:opacity-40 text-tx text-sm rounded-md transition-colors active:scale-[0.98]"
+                className={SECONDARY}
               >
-                {isLoadingThis && (
-                  <span className="w-3.5 h-3.5 border-2 border-line3 border-t-accent rounded-full animate-spin flex-shrink-0" aria-hidden="true" />
+                {loadingSample === sample.filename && (
+                  <span className="w-3.5 h-3.5 border-2 border-line3 border-t-accent rounded-full animate-spin" aria-hidden="true" />
                 )}
                 {sample.label}
               </button>
-            );
-          })}
-        </div>
-      </div>
+            ))}
+          </div>
+        </ProofSheet>
+
+        <aside className="flex-[1_1_340px] min-w-0 flex flex-col gap-5">
+          <TicketHeading>Job ticket</TicketHeading>
+          {TICKET.map((t) => (
+            <div key={t.n} className="flex gap-4 items-start">
+              <span
+                className={`font-mono text-[13px] w-7 h-7 flex-shrink-0 flex items-center justify-center ${
+                  t.n === 1 ? 'bg-tx text-bg' : 'border border-tx'
+                }`}
+              >
+                {t.n}
+              </span>
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold text-[16px]">{t.title}</span>
+                <span className="text-[14px] text-tx2 leading-relaxed">{t.body}</span>
+              </div>
+            </div>
+          ))}
+          <div className="mt-auto flex flex-col gap-2 pt-4">
+            <Caps>Color bar</Caps>
+            <div className="grid grid-cols-8 border border-tx h-7">
+              {Array.from({ length: 8 }, (_, i) => (
+                <div key={i} className={i < 7 ? 'border-r border-line' : ''} />
+              ))}
+            </div>
+            <span className="text-[13px] text-tx2">Fills with the job's filaments once a file is open.</span>
+          </div>
+        </aside>
+      </main>
     </div>
   );
 }
