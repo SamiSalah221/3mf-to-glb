@@ -8,6 +8,7 @@ import type {
   RotationQuat,
 } from '../types/index.js';
 import { hexToLinearRGBA } from './colorConvert.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /**
  * Up axis of the BUILD (source / print-bed) coordinate frame.
@@ -112,6 +113,24 @@ export function reorientCloneToYUp(clone: THREE.Object3D): void {
   });
 }
 
+
+/**
+ * Weld the geometry of smooth-shaded meshes (userData.weldOnExport, set for
+ * chunks built from G-code) inside an export clone into indexed geometry.
+ * Bead meshes repeat each ring vertex in up to six triangles, so this makes
+ * the GLB / USDZ several times smaller with identical shading. Call it on the
+ * export clone only, after reorientCloneToYUp (which already gave each mesh
+ * its own geometry).
+ */
+export function weldSmoothMeshes(clone: THREE.Object3D): void {
+  clone.traverse((child) => {
+    if (child instanceof THREE.Mesh && child.userData.weldOnExport && !child.geometry.index) {
+      const welded = mergeVertices(child.geometry, 1e-5);
+      child.geometry.dispose();
+      child.geometry = welded;
+    }
+  });
+}
 
 /**
  * Build a viewer/export scene from a plate's mesh chunks.
@@ -280,6 +299,7 @@ export function buildSceneFromPlate(
     mesh.name = `${chunk.name}_fil${chunk.filamentIndex}`;
     mesh.userData.filamentIndex = chunk.filamentIndex;
     mesh.userData.chunkName = chunk.name;
+    if (chunk.smoothShaded) mesh.userData.weldOnExport = true;
     group.add(mesh);
   }
 

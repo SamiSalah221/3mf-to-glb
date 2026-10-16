@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { USDZExporter } from 'three/addons/exporters/USDZExporter.js';
-import { BUILD_UP_AXIS, reorientCloneToYUp } from './glbBuilder.js';
+import { BUILD_UP_AXIS, reorientCloneToYUp, weldSmoothMeshes } from './glbBuilder.js';
 
 /**
  * Build a USDZ archive from a THREE scene/group.
@@ -19,6 +19,7 @@ export async function buildUSDZBytes(scene: THREE.Object3D): Promise<Uint8Array>
   // Z-up (3MF/print-bed) → Y-up (USDZ/AR frame), clone only.
   // Gated on BUILD_UP_AXIS so flipping the constant disables the reorient.
   if (BUILD_UP_AXIS === 'z') reorientCloneToYUp(exportScene);
+  weldSmoothMeshes(exportScene);
 
   try {
     // quickLookCompatible: enables flags Quick Look needs to render PBR

@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useAppStore } from '../store/useAppStore';
 import { parse3MF } from '../lib/parse3MF';
+import { isGcodeFile } from '../lib/parseGcode';
+import { parseGcodeInWorker } from '../workers/parseGcodeInWorker';
 
 const SAMPLES_BASE_URL =
   'https://raw.githubusercontent.com/SamiSalah221/3mf-to-glb/master/samples/';
@@ -25,10 +27,14 @@ export function UploadScreen() {
       setLoading(true);
       try {
         const buffer = await file.arrayBuffer();
-        const result = await parse3MF(buffer);
+        // Sliced G-code (.gcode, or a .gcode.3mf plate export) gives the
+        // as-printed model, built from the toolpath.
+        const result = (await isGcodeFile(buffer))
+          ? await parseGcodeInWorker(buffer)
+          : await parse3MF(buffer);
         setParsed(result);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to parse 3MF file');
+        setError(err instanceof Error ? err.message : 'Failed to parse file');
       }
     },
     [setFile, setLoading, setError, setParsed],
@@ -63,7 +69,10 @@ export function UploadScreen() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'application/vnd.ms-package.3dmanufacturing-3dmodel+xml': ['.3mf'] },
+    accept: {
+      'application/vnd.ms-package.3dmanufacturing-3dmodel+xml': ['.3mf'],
+      'text/x-gcode': ['.gcode'],
+    },
     multiple: false,
   });
 
@@ -101,7 +110,7 @@ export function UploadScreen() {
           </div>
 
           <h1 className="text-xl font-semibold text-tx mb-2">
-            {isDragActive ? 'Drop to open' : 'Drop a multi-color .3mf'}
+            {isDragActive ? 'Drop to open' : 'Drop a multi-color .3mf or sliced G-code'}
           </h1>
 
           <p className="text-tx2 text-sm mb-3">
@@ -109,7 +118,8 @@ export function UploadScreen() {
           </p>
 
           <p className="text-tx3 text-xs leading-relaxed">
-            Works with Bambu Studio, OrcaSlicer, and Snapmaker U1. Files are parsed on your device and never uploaded.
+            Works with Bambu Studio, OrcaSlicer, and Snapmaker U1. A sliced .gcode or .gcode.3mf shows the part as
+            it will print, every layer line included. Files are parsed on your device and never uploaded.
           </p>
         </div>
 
@@ -119,7 +129,7 @@ export function UploadScreen() {
             Browse file
             <input
               type="file"
-              accept=".3mf"
+              accept=".3mf,.gcode"
               className="sr-only"
               onChange={(e) => {
                 const f = e.target.files?.[0];

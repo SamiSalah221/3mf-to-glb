@@ -18,7 +18,10 @@ export function useExportActions() {
     setArPlatform(detectArPlatform());
   }, []);
 
-  const baseName = (file?.name.replace(/\.3mf$/i, '') ?? 'model') + '-recolored';
+  const isGcode = useAppStore((s) => s.parseResult?.sourceKind === 'gcode');
+  const baseName = isGcode
+    ? (file?.name.replace(/(\.gcode)?\.3mf$|\.gcode$/i, '') ?? 'model') + '-as-printed'
+    : (file?.name.replace(/\.3mf$/i, '') ?? 'model') + '-recolored';
 
   const handleExportGLB = async () => {
     setExporting('glb');
@@ -108,5 +111,7 @@ export function useExportActions() {
     exporting,
     busy: exporting !== null,
     file,
+    /** 3MF write-back re-tints the source 3MF; a G-code source has none. */
+    can3MF: !!file && !isGcode,
   };
 }

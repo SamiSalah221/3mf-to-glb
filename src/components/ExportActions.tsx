@@ -15,7 +15,7 @@ const ACTION_LABEL: Record<'glb' | 'obj' | '3mf' | 'ar', string> = {
  * underlying state and copy so they can no longer drift or disagree.
  */
 export function ExportActions({ layout }: { layout: 'row' | 'stack' }) {
-  const { handleExportGLB, handleExportOBJ, handleExport3MF, handleViewInAR, arLabel, exporting, busy, file } =
+  const { handleExportGLB, handleExportOBJ, handleExport3MF, handleViewInAR, arLabel, exporting, busy, can3MF } =
     useExportActions();
 
   const bar = busy && (
@@ -59,9 +59,11 @@ export function ExportActions({ layout }: { layout: 'row' | 'stack' }) {
         </button>
         <button
           onClick={handleExport3MF}
-          disabled={busy || !file}
+          disabled={busy || !can3MF}
           className="w-full h-12 bg-panel2 hover:bg-panel3 disabled:opacity-40 border border-line hover:border-line2 text-tx text-sm font-medium rounded-md transition-colors active:scale-[0.98]"
-          title="Re-export the source 3MF with the new filament colors. The export pivot above is for GLB/USDZ only; the 3MF keeps the original print-bed position so it slices unchanged in OrcaSlicer / U1."
+          title={can3MF
+            ? 'Re-export the source 3MF with the new filament colors. The export pivot above is for GLB/USDZ only; the 3MF keeps the original print-bed position so it slices unchanged in OrcaSlicer / U1.'
+            : 'Available for .3mf files. This model was built from G-code, so there is no source 3MF to re-tint.'}
         >
           Export 3MF (keeps colors, still sliceable)
         </button>
@@ -113,8 +115,8 @@ export function ExportActions({ layout }: { layout: 'row' | 'stack' }) {
         </button>
         <button
           onClick={handleExport3MF}
-          disabled={busy || !file}
-          title="Re-export the source 3MF with the new filament colors."
+          disabled={busy || !can3MF}
+          title={can3MF ? 'Re-export the source 3MF with the new filament colors.' : 'Available for .3mf files. This model was built from G-code.'}
           className="px-3.5 h-10 bg-panel2 hover:bg-panel3 disabled:opacity-40 border border-line hover:border-line2 text-tx text-xs font-medium rounded-md transition-colors active:scale-[0.98]"
         >
           3MF

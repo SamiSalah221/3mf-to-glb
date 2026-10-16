@@ -4,6 +4,7 @@
  *
  *   3mf-to-glb input.3mf -o output.glb
  *   3mf-to-glb input.3mf --plate 2 --recolor "1=#FF0000,2=#00AAFF" -o output.glb
+ *   3mf-to-glb sliced.gcode.3mf -o as-printed.glb
  *
  * The CLI is a thin shell over the same library the web app uses. It runs
  * fully offline; no network calls.
@@ -29,6 +30,8 @@ interface CliArgs {
   recolor?: FilamentRecolorMap;
   pivot?: PivotMode;
   rotation?: [number, number, number];
+  gcodeDetail?: 'visible' | 'all';
+  supports?: boolean;
   showHelp: boolean;
 }
 
@@ -48,11 +51,14 @@ function parseRotation(raw: string): [number, number, number] {
   return [parts[0], parts[1], parts[2]];
 }
 
-const HELP = `3mf-to-glb: convert a multi-color 3MF to GLB or OBJ
+const HELP = `3mf-to-glb: convert a multi-color 3MF, or sliced G-code, to GLB or OBJ
 
 Usage:
-  3mf-to-glb <input.3mf> [-o output.glb] [--plate N] [--recolor "1=#hex,2=#hex"]
-                          [--pivot MODE] [--rotation "x,y,z"]
+  3mf-to-glb <input.3mf | input.gcode | input.gcode.3mf> [-o output.glb]
+             [--plate N] [--recolor "1=#hex,2=#hex"] [--pivot MODE] [--rotation "x,y,z"]
+
+  A sliced .gcode / .gcode.3mf gives the as-printed model: a bead of plastic
+  swept along every extruding move, so every layer line is the real one.
 
 Options:
   -o, --output <file>     Output path (default: input filename with .glb).
@@ -64,6 +70,9 @@ Options:
       --rotation <x,y,z>  XYZ Euler rotation in degrees, baked into geometry
                           before the pivot. Useful for glTF Y-up reorientation
                           of a Z-up source (try "90,0,0").
+      --gcode-detail <d>  G-code input: visible (default; walls and skins) or
+                          all (every extrusion, including infill)
+      --supports          G-code input: keep support material
   -h, --help              Show this message
 
 Examples:
@@ -72,6 +81,7 @@ Examples:
   3mf-to-glb model.3mf --plate 2 -o plate2.glb
   3mf-to-glb model.3mf --rotation "90,0,0" -o yup.glb
   3mf-to-glb model.3mf -o model.obj
+  3mf-to-glb model.gcode.3mf -o as-printed.glb
 `;
 
 function parseArgs(argv: string[]): CliArgs {
@@ -109,6 +119,17 @@ function parseArgs(argv: string[]): CliArgs {
       case '--rotation':
         result.rotation = parseRotation(argv[++i] ?? '');
         break;
+      case '--gcode-detail': {
+        const raw = argv[++i] ?? '';
+        if (raw !== 'visible' && raw !== 'all') {
+          throw new Error(`--gcode-detail expects visible or all, got "${raw}"`);
+        }
+        result.gcodeDetail = raw;
+        break;
+      }
+      case '--supports':
+        result.supports = true;
+        break;
       default:
         if (arg.startsWith('-')) throw new Error(`Unknown flag: ${arg}`);
         if (!result.input) result.input = arg;
@@ -136,13 +157,14 @@ async function main(): Promise<number> {
   setDefaultDomParser(new DOMParser() as unknown as { parseFromString(xml: string, mime: string): Document });
 
   const inputPath = resolve(args.input);
-  if (extname(inputPath).toLowerCase() !== '.3mf') {
-    process.stderr.write(`warning: input does not have a .3mf extension: ${inputPath}\n`);
+  const ext = extname(inputPath).toLowerCase();
+  if (ext !== '.3mf' && ext !== '.gcode') {
+    process.stderr.write(`warning: input does not have a .3mf or .gcode extension: ${inputPath}\n`);
   }
 
   const output =
     args.output ||
-    inputPath.replace(/\.3mf$/i, '') + '.glb' ||
+    inputPath.replace(/(\.gcode)?\.3mf$|\.gcode$/i, '') + '.glb' ||
     basename(inputPath, extname(inputPath)) + '.glb';
 
   const buf = await readFile(inputPath);
@@ -151,6 +173,7 @@ async function main(): Promise<number> {
     recolor: args.recolor,
     pivotMode: args.pivot,
     rotationEulerDeg: args.rotation,
+    gcode: { detail: args.gcodeDetail, supports: args.supports },
   };
 
   if (extname(output).toLowerCase() === '.obj') {

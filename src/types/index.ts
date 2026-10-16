@@ -27,6 +27,12 @@ export interface MeshChunk {
   positions: Float32Array;
   normals: Float32Array;
   faceCount: number;
+  /**
+   * Normals are smooth (shared by neighbouring faces), as in the beads built
+   * from G-code. Exporters weld such chunks into indexed geometry, which is
+   * several times smaller; flat-shaded 3MF chunks are left as they are.
+   */
+  smoothShaded?: boolean;
 }
 
 /** A plate containing multiple mesh chunks */
@@ -67,6 +73,12 @@ export interface ParseResult {
   sourceUnit: SourceUnit;
   /** Meters-per-source-unit conversion factor for the parsed file. */
   unitToMeters: number;
+  /**
+   * What the geometry was built from: the design mesh of a `.3mf` (default),
+   * or the toolpath of sliced G-code (the as-printed model). 3MF write-back
+   * only applies to '3mf'.
+   */
+  sourceKind?: '3mf' | 'gcode';
 }
 
 /**
