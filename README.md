@@ -220,20 +220,23 @@ The same parser that drives the web app is also published as a Node CLI for
 batch jobs, build pipelines, and headless renderers. No backend required.
 
 ```bash
+npm install printproof three
+# (printproof and 3mf-to-glb are both installed as command names)
+
 # Convert a 3MF to GLB, recolor filaments 1 and 2 in the process:
-npx 3mf-to-glb model.3mf -o recolored.glb --recolor "1=#cc0000,2=#000000"
+npx printproof model.3mf -o recolored.glb --recolor "1=#cc0000,2=#000000"
 
 # Pick a specific plate from a multi-plate file:
-npx 3mf-to-glb model.3mf --plate 2 -o plate2.glb
+npx printproof model.3mf --plate 2 -o plate2.glb
 
 # Reorient a Z-up print to glTF Y-up while exporting:
-npx 3mf-to-glb model.3mf --rotation "90,0,0" -o yup.glb
+npx printproof model.3mf --rotation "90,0,0" -o yup.glb
 
 # Write a per-vertex-color Wavefront OBJ instead (one self-contained file):
-npx 3mf-to-glb model.3mf -o model.obj
+npx printproof model.3mf -o model.obj
 
 # Build the as-printed model from sliced G-code (every bead, every layer line):
-npx 3mf-to-glb model.gcode.3mf -o as-printed.glb
+npx printproof model.gcode.3mf -o as-printed.glb
 ```
 
 Flags:
@@ -251,8 +254,9 @@ Flags:
 
 ## Use it from your own code (library)
 
-The package exports a small, framework-agnostic API. Three.js is the only
-runtime dependency for GLB emission; the parser itself is pure TypeScript.
+The `printproof` package exports a small, framework-agnostic API. Three.js is
+a peer dependency, needed only for GLB emission; the parser itself is pure
+TypeScript.
 
 ```ts
 import { readFile, writeFile } from 'node:fs/promises';
@@ -263,7 +267,7 @@ import {
   applyRecolor,
   buildSceneFromPlate,
   buildGLBBytes,
-} from '3mf-to-glb';
+} from 'printproof';
 
 // In Node, inject the XML parser once at startup. In the browser, omit
 // this — the global DOMParser is used automatically.
@@ -467,7 +471,7 @@ Already shipped:
   enumeration matching the slicer's own enabled/non-deleted row rules, and
   pigment-model color blending instead of linear-RGB averaging. See
   [`docs/SNAPMAKER_FULL_SPECTRUM.md`](./docs/SNAPMAKER_FULL_SPECTRUM.md).
-- Headless TypeScript library (`3mf-to-glb`) usable from Node and the browser,
+- Headless TypeScript library (`printproof` on npm) usable from Node and the browser,
   plus a `3mf-to-glb` Node CLI for batch jobs and build pipelines.
 - 3MF re-tint round-trip: re-export the source archive with new filament
   colors and have it slice cleanly in OrcaSlicer / Snapmaker U1.
