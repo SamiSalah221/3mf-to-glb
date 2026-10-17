@@ -38,3 +38,11 @@ jobs:
           [[ "$(head -c 4 /tmp/kuwait.glb)" == "glTF" ]]
       - name: Round-trip smoke across all samples
         run: npm run test:roundtrip
+      - name: Published package shape
+        run: node scripts/check-package.mjs
+      - name: Round-trip against the oldest supported three
+        # three is a peerDependency, so the floor of the declared range has to
+        # keep working. Consumers pinned there would otherwise find out first.
+        run: |
+          npm i --no-save three@0.182.0
+          npm run test:roundtrip

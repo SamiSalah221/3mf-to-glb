@@ -1,7 +1,13 @@
 # Contributing
 
-Thanks for your interest in improving 3MF Color Customizer. This project is
+Thanks for your interest in improving Printproof. This project is
 open to issues, pull requests, and discussion.
+
+The repository ships two things: the web demo you see at the project page, and
+the headless `printproof` npm package (the parser, converters, and CLI). They
+share one `package.json`, so a dependency added for the demo must go in
+`devDependencies` or it lands in every consumer's install. See
+[Publishing](#publishing-maintainer) below.
 
 ## Development setup
 
@@ -20,11 +26,15 @@ for quick testing.
 
 ```
 src/
-├── lib/         # Core parsing & GLB export (no React)
+├── lib/         # Core parsing & GLB export (no React) -> npm "printproof"
 │   ├── parse3MF.ts         # 3MF ZIP/XML + paint_color decoder
+│   ├── parseXml.ts         # DOMParser seam + lenient vendor-XML retry
 │   ├── colorConvert.ts     # sRGB ↔ linear color space
 │   ├── glbBuilder.ts       # Geometry → glTF document
-│   └── glbExporter.ts      # GLB binary serialization
+│   ├── glbExporter.ts      # GLB binary serialization
+│   ├── browser.ts          # DOM-only helpers -> "printproof/browser"
+│   └── arLauncher.ts       # Demo-only AR handoff (not in the package)
+├── cli/         # Node CLI -> "printproof/cli"
 ├── components/  # React UI (upload, editor, export)
 ├── viewer/      # Three.js / React Three Fiber scene
 ├── store/       # Zustand state
@@ -32,6 +42,9 @@ src/
 samples/         # Example .3mf files
 docs/            # Technical write-ups
 ```
+
+Only `src/lib/`, `src/cli/` and `src/types/` are compiled into the package
+(`tsconfig.lib.json`). Everything else is the demo.
 
 The heart of the project is [`src/lib/parse3MF.ts`](./src/lib/parse3MF.ts),
 which decodes BambuStudio's undocumented `paint_color` attribute (a nibble-packed
@@ -42,12 +55,19 @@ for the full technical write-up before touching the decoder.
 ## Running checks
 
 ```bash
-npm run lint        # ESLint
-npm run build       # TypeScript + Vite production build
-npm run preview     # Preview the production build locally
+npm run lint            # ESLint
+npm run build           # TypeScript + Vite production build (the demo)
+npm run preview         # Preview the production build locally
+npm run build:lib       # Compile the headless library and CLI to dist-lib/
+npm run test:roundtrip  # Parse/recolor/re-export every sample (needs build:lib)
+npm run check:package   # Assert the published package shape
 ```
 
-Please make sure `npm run lint` and `npm run build` both pass before opening a PR.
+Please make sure `npm run lint` and `npm run build` both pass before opening a
+PR. If you touched anything under `src/lib/` or `src/cli/`, run `npm run
+build:lib && npm run test:roundtrip` as well: the round trip runs against the
+compiled output in `dist-lib/`, so it will happily test stale code if you skip
+the build.
 
 ## Reporting bugs
 
@@ -64,6 +84,52 @@ A small note on how the file was produced (BambuStudio version, whether it uses
 3. If you add a new sample file that triggers a parsing edge case, drop it in
    `samples/` with a short note in the PR description.
 4. Use the PR template and fill in the test plan.
+5. Sign off the commits in your PR (see below).
+
+## Sign your work (DCO)
+
+Contributions are accepted under the
+[Developer Certificate of Origin](./DCO) 1.1. It is a short statement that you
+wrote the patch, or otherwise have the right to submit it under this project's
+MIT license. There is no separate CLA and you keep the copyright in your work.
+
+This applies to contributions arriving by pull request. The maintainer's own
+commits are covered by authorship and are signed off at his discretion, so do
+not add a `Signed-off-by` line on someone else's behalf: it is a certification
+only the author can make.
+
+Certify your own commits by adding a `Signed-off-by` line, which git writes for
+you with `-s`:
+
+```bash
+git commit -s -m "fix: handle empty colorgroup"
+```
+
+The line must carry your real name and an email address you can be reached at:
+
+```
+Signed-off-by: Jane Developer <jane@example.com>
+```
+
+If you forget, `git commit --amend -s` fixes the last commit and
+`git rebase --signoff main` fixes a whole branch.
+
+## Publishing (maintainer)
+
+The npm package is `printproof`, built from `src/lib/`, `src/cli/` and
+`src/types/` only. Before publishing:
+
+```bash
+npm run build:lib
+npm run test:roundtrip
+npm run check:package
+npm pack                 # inspect the tarball, then publish
+npm publish --access public
+```
+
+`npm run check:package` is the guard that keeps demo dependencies (React,
+Tailwind, the R3F stack) out of the published dependency tree and verifies
+every `exports` target is actually packed. It runs in CI too.
 
 ## Ideas for first contributions
 
