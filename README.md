@@ -7,11 +7,14 @@ AR, and export, all in your browser.
 
 **When you convert a multi-color `.3mf` to mesh, most converters export a bare
 geometry and discard the slicer's paint data. As far as I can find, this is
-the first tool that carries those per-face color zones all the way to GLB —
+the first tool that carries those per-face color zones all the way to GLB,
 then lets you recolor them in the browser, reorient and scale the model for
-AR, and export GLB / USDZ / OBJ / a re-tinted `.3mf`. Works with any Bambu Studio,
-OrcaSlicer, or Snapmaker U1 file; they share the same on-disk encoding.
-100% client-side, MIT-licensed, no telemetry.**
+AR, and export GLB / USDZ / OBJ / a re-tinted `.3mf`. The same is true of
+sliced G-code: open a `.gcode` and you get the part as it will actually
+print, every bead and every layer line, as a GLB or OBJ you can recolor,
+view in AR, and ship. Works with any Bambu Studio, OrcaSlicer, or Snapmaker
+U1 file; they share the same on-disk encoding. 100% client-side,
+MIT-licensed, no telemetry.**
 
 [![Live demo](https://img.shields.io/badge/demo-live-2ea44f?style=for-the-badge)](https://samisalah221.github.io/3mf-to-glb/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](./LICENSE)
@@ -34,8 +37,8 @@ OrcaSlicer, or Snapmaker U1 file; they share the same on-disk encoding.
 **→ <https://samisalah221.github.io/3mf-to-glb/>**
 
 No sign-up, no upload. If you don't have a `.3mf` handy, hit
-**"Try sample · owl (Bambu)"** or **"Try sample · sea slug (U1)"** on the
-upload screen, or grab one of the fixtures in [`samples/`](./samples) and
+**"Owl · Bambu"** or **"Sea slug · Snapmaker U1"** on the
+open screen, or grab one of the fixtures in [`samples/`](./samples) and
 drop it on the page.
 
 > **Snapmaker U1 Innovation Fund submission:** project description and
@@ -119,6 +122,22 @@ before you make it.
   averaging — so a navy + yellow blend renders the actual green the slicer
   would produce, not a muddy average. See
   [`docs/SNAPMAKER_FULL_SPECTRUM.md`](./docs/SNAPMAKER_FULL_SPECTRUM.md).
+- **As-printed model from sliced G-code.** Open a `.gcode` or `.gcode.3mf`
+  and get the part as it will print: a bead of plastic is swept along every
+  extruding move, sized from the plastic it pushes, so every layer line,
+  seam and infill direction in the preview is the real one. Load it next to
+  the design `.3mf` and switch between **Model** and **As printed** in the
+  same view and colors; if the slicer scaled the part, the viewer says so.
+  Recolor, GLB / USDZ / OBJ export and AR work on it like on any model.
+  Reads PrusaSlicer, OrcaSlicer, Bambu Studio and Snapmaker U1 G-code
+  (arcs, relative or absolute E, multi-tool). Parsed in a Web Worker,
+  still on your device. Big prints stay usable: a four-day, five-million-move
+  file opens in about twelve seconds and orbits smoothly, because the viewer
+  shows a bounded mesh and the Proof ticket says so when it does. Exports
+  never inherit that: every GLB, USDZ and OBJ is swept again from the
+  toolpath at full detail, and the Sign off card states the detail it was
+  written at. The G-code path is held to the same bar as the `.3mf` path:
+  watertight, outward-wound, checked by the same OBJ gate.
 - **Interactive 3D editor.** Recolor any zone with a color picker; changes
   update live in the Three.js viewport.
 - **PBR GLB export.** One glTF material per color zone, correct sRGB to
@@ -212,6 +231,9 @@ npx 3mf-to-glb model.3mf --rotation "90,0,0" -o yup.glb
 
 # Write a per-vertex-color Wavefront OBJ instead (one self-contained file):
 npx 3mf-to-glb model.3mf -o model.obj
+
+# Build the as-printed model from sliced G-code (every bead, every layer line):
+npx 3mf-to-glb model.gcode.3mf -o as-printed.glb
 ```
 
 Flags:
@@ -223,6 +245,8 @@ Flags:
 | `--recolor <map>` | Comma-separated `index=hex` pairs applied before export. Hex may include or omit the leading `#`. |
 | `--pivot <mode>` | Export pivot: `base-center` (default), `bbox-center`, `centroid`, `original`, `custom`. |
 | `--rotation <x,y,z>` | XYZ Euler rotation in degrees, baked into geometry before the pivot. Try `"90,0,0"` to reorient a Z-up source to glTF Y-up. |
+| `--gcode-detail <d>` | G-code input: `visible` (default; walls and skins, what shows on the finished part) or `all` (every extrusion, including infill). The CLI always writes the full-detail sweep; the viewer's budget never applies here. |
+| `--supports` | G-code input: keep support material. |
 | `-h, --help` | Show full help. |
 
 ## Use it from your own code (library)
@@ -475,6 +499,11 @@ Already shipped:
   from the CLI (`-o model.obj`), with sRGB colors on the `v` lines and vertices
   in millimeters. Coincident corners are welded into one shared pool so the
   mesh reads as watertight.
+- G-code at scale: the reader keeps moves in typed arrays and the bead sweep
+  writes indexed geometry, so a 148 MB print goes from 92 s and about 2 GB of
+  vertex data to 6.5 s and 0.8 GB at full detail. The viewer holds a bounded
+  mesh on prints that large; exports re-sweep at full detail. Hovering no
+  longer raycasts every triangle.
 
 Near-term work, in rough priority order:
 

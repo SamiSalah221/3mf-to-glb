@@ -11,14 +11,14 @@ export default function App() {
 
   if (error) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-bg gap-4">
-        <div className="text-red-400 text-sm font-semibold">Parse error</div>
-        <p className="text-tx2 text-sm max-w-md text-center leading-relaxed">{error}</p>
+      <div className="h-full flex flex-col items-center justify-center bg-bg text-tx gap-4 px-6">
+        <span className="font-mono text-[12px] tracking-[0.08em] px-2 py-1 bg-accent text-accent-fg">COULD NOT OPEN</span>
+        <p className="text-tx2 text-[15px] max-w-md text-center leading-relaxed">{error}</p>
         <button
           onClick={reset}
-          className="mt-2 px-4 py-2 bg-accent hover:bg-accent-hover text-accent-fg rounded-md text-sm font-medium transition-colors"
+          className="mt-2 h-12 px-5 bg-tx text-bg font-semibold text-[15px] hover:bg-white transition-colors"
         >
-          Try again
+          Start a new job
         </button>
       </div>
     );

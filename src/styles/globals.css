@@ -1,35 +1,34 @@
 @import "tailwindcss";
 
 @theme {
-  /* Background layers: neutral "Cool Slate" studio ramp. Deliberately
-     very low chroma (faint blue tint only) so the surround doesn't bias
-     the model's colors — this is a WYSIWYG color tool, and a saturated
-     backdrop shifts perceived hue/saturation via simultaneous contrast. */
-  --color-bg: #0C111A;
-  --color-panel: #141A25;
-  --color-panel2: #1B2230;
-  --color-panel3: #232B3B;
+  /* "Proof" theme: the app reads as a print shop's proof sheet, in dark.
+     Neutral, near-zero-chroma greys so the surround doesn't bias the
+     model's colors (this is a WYSIWYG color tool: a tinted backdrop shifts
+     perceived hue via simultaneous contrast). */
+  --color-bg: #0E0F12;      /* the table the sheets lie on */
+  --color-panel: #17181C;   /* a proof sheet / ticket card */
+  --color-panel2: #131418;  /* inputs, wells */
+  --color-panel3: #202227;  /* hover */
+  --color-stage: #141518;   /* the 3D viewport inside a sheet */
 
-  /* Border lines */
-  --color-line: #2E3748;
-  --color-line2: #3E4A5E;
-  --color-line3: #4E5C73;
+  /* Rules and borders */
+  --color-line: #2C2E34;
+  --color-line2: #3A3D44;
+  --color-line3: #5A5E66;
 
-  /* Text */
-  --color-tx: #F4F7FB;
-  --color-tx2: #C2CAD6;
-  --color-tx3: #93A0B2;
-  --color-tx4: #64748B;
+  /* Ink (text). tx doubles as the "ink" fill of primary buttons. */
+  --color-tx: #EDEDE8;
+  --color-tx2: #A7AAB1;
+  --color-tx3: #8E929A;
+  --color-tx4: #6E727A;
 
-  /* Accent (rationed to primary actions + active states). Cool indigo:
-     a cool accent sits opposite the warm model tones the tool is built to
-     preview, so it biases perceived color the least, and it stays clear of
-     the pure R/G/B used by the CAD axis gizmo. On-accent text is white
-     (4.9:1 on the resting accent) since indigo is a dark-ish hue. */
-  --color-accent: #6D5AE6;
-  --color-accent-hover: #8574F0;
-  --color-accent-active: #5646C4;
-  --color-accent-fg: #FFFFFF;
+  /* Accent: a press-proof orange, rationed to step labels, links and
+     warnings. Primary actions are ink-on-paper (tx fill, bg text), not
+     accent, so the accent stays a signal. */
+  --color-accent: #F07B3F;
+  --color-accent-hover: #FF9A66;
+  --color-accent-active: #D9652B;
+  --color-accent-fg: #0E0F12;
 
   /* Semantic status (modified/overridden indicators) */
   --color-warn: #F2B03D;
@@ -39,18 +38,26 @@
   --color-axis-y: #46A758;
   --color-axis-z: #3E8FDD;
 
+  /* Square corners everywhere: a proof sheet has no rounded cards.
+     rounded-full (spinners, status dots) is unaffected. */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+
   /* Fonts */
-  --font-sans: "Hanken Grotesk", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
 html, body, #root {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background-color: #0C111A;
+  background-color: #0E0F12;
   font-family: var(--font-sans);
-  color: #F4F7FB;
+  color: #EDEDE8;
 }
 
 /* Keyboard focus ring */
@@ -62,7 +69,7 @@ html, body, #root {
 /* Thin scrollbar helper */
 .cc-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #2E3748 transparent;
+  scrollbar-color: #3A3D44 transparent;
 }
 .cc-scroll::-webkit-scrollbar {
   width: 4px;
@@ -71,8 +78,7 @@ html, body, #root {
   background: transparent;
 }
 .cc-scroll::-webkit-scrollbar-thumb {
-  background: #2E3748;
-  border-radius: 2px;
+  background: #3A3D44;
 }
 
 /* Keyframes */

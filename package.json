@@ -86,6 +86,8 @@
     "@eslint/js": "^9.39.1",
     "@fontsource/hanken-grotesk": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "@gltf-transform/core": "^4.3.0",
     "@google/model-viewer": "^4.3.1",
     "@react-three/drei": "^10.7.7",

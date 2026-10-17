@@ -26,8 +26,8 @@ const GRID_SECTION_M = 0.05; // 50 mm coarse cells
 // Grid line colors, tuned to read over the viewport's neutral Cool Slate
 // gradient (there is no opaque plate mesh anymore, so the grid floats over
 // it directly). Kept low-chroma to match the neutral studio backdrop.
-const GRID_COLOR_FINE = '#28313F';
-const GRID_COLOR_COARSE = '#3C4A5E';
+const GRID_COLOR_FINE = '#24262B';
+const GRID_COLOR_COARSE = '#3A3D44';
 
 export function ColorableModel() {
   const parseResult = useAppStore((s) => s.parseResult);
@@ -164,12 +164,31 @@ export function ColorableModel() {
   const handleClick = useCallback(
     (e: ThreeEvent<MouseEvent>) => {
       e.stopPropagation();
-      const filIdx = (e.object as THREE.Mesh).userData.filamentIndex as number | undefined;
+      let mesh = e.object as THREE.Mesh;
+      // Bead meshes (G-code) raycast against their bounding box for cheap
+      // hover, and on a multi-tool print those boxes overlap, so the hit is
+      // the first box the ray enters, not the bead under the cursor. One
+      // exact triangle pass per click settles it; per pointer move it would
+      // stall, per click it is a few hundred ms at most.
+      if (mesh.userData.weldOnExport && sceneGroup) {
+        const hits: THREE.Intersection[] = [];
+        const raycaster = new THREE.Raycaster();
+        raycaster.ray.copy(e.ray);
+        sceneGroup.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.userData.weldOnExport) {
+            THREE.Mesh.prototype.raycast.call(child, raycaster, hits);
+          }
+        });
+        if (!hits.length) return;
+        hits.sort((a, b) => a.distance - b.distance);
+        mesh = hits[0].object as THREE.Mesh;
+      }
+      const filIdx = mesh.userData.filamentIndex as number | undefined;
       if (filIdx) {
         selectFilament(selectedFilamentIndex === filIdx ? null : filIdx);
       }
     },
-    [selectFilament, selectedFilamentIndex],
+    [selectFilament, selectedFilamentIndex, sceneGroup],
   );
 
   const handlePointerOver = useCallback(

@@ -8,6 +8,7 @@ import type {
   RotationQuat,
 } from '../types/index.js';
 import { hexToLinearRGBA } from './colorConvert.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /**
  * Up axis of the BUILD (source / print-bed) coordinate frame.
@@ -112,6 +113,43 @@ export function reorientCloneToYUp(clone: THREE.Object3D): void {
   });
 }
 
+
+const _rayBox = new THREE.Box3();
+const _rayInv = new THREE.Matrix4();
+const _rayLocal = new THREE.Ray();
+const _rayHit = new THREE.Vector3();
+
+/** Mesh.raycast replacement: one hit at the local bounding box, no triangle walk. */
+function raycastBoundsOnly(this: THREE.Mesh, raycaster: THREE.Raycaster, intersects: THREE.Intersection[]): void {
+  const geometry = this.geometry;
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
+  _rayBox.copy(geometry.boundingBox!);
+  _rayInv.copy(this.matrixWorld).invert();
+  _rayLocal.copy(raycaster.ray).applyMatrix4(_rayInv);
+  if (!_rayLocal.intersectBox(_rayBox, _rayHit)) return;
+  _rayHit.applyMatrix4(this.matrixWorld);
+  const distance = raycaster.ray.origin.distanceTo(_rayHit);
+  if (distance < raycaster.near || distance > raycaster.far) return;
+  intersects.push({ distance, point: _rayHit.clone(), object: this });
+}
+
+/**
+ * Weld the geometry of smooth-shaded meshes (userData.weldOnExport, set for
+ * chunks built from G-code) inside an export clone into indexed geometry.
+ * Bead meshes repeat each ring vertex in up to six triangles, so this makes
+ * the GLB / USDZ several times smaller with identical shading. Call it on the
+ * export clone only, after reorientCloneToYUp (which already gave each mesh
+ * its own geometry).
+ */
+export function weldSmoothMeshes(clone: THREE.Object3D): void {
+  clone.traverse((child) => {
+    if (child instanceof THREE.Mesh && child.userData.weldOnExport && !child.geometry.index) {
+      const welded = mergeVertices(child.geometry, 1e-5);
+      child.geometry.dispose();
+      child.geometry = welded;
+    }
+  });
+}
 
 /**
  * Build a viewer/export scene from a plate's mesh chunks.
@@ -263,6 +301,7 @@ export function buildSceneFromPlate(
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    if (chunk.indices) geometry.setIndex(new THREE.BufferAttribute(chunk.indices, 1));
 
     const colorHex = filamentMap.get(chunk.filamentIndex) || '#808080';
     const [r, g, b] = hexToLinearRGBA(colorHex);
@@ -280,6 +319,14 @@ export function buildSceneFromPlate(
     mesh.name = `${chunk.name}_fil${chunk.filamentIndex}`;
     mesh.userData.filamentIndex = chunk.filamentIndex;
     mesh.userData.chunkName = chunk.name;
+    if (chunk.smoothShaded) {
+      mesh.userData.weldOnExport = true;
+      // Bead meshes run to tens of millions of triangles; a per-triangle
+      // raycast on every pointer move would stall the page. Hover and click
+      // only need to know which tool mesh is under the cursor, so test the
+      // bounding box instead.
+      mesh.raycast = raycastBoundsOnly;
+    }
     group.add(mesh);
   }
 

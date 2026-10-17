@@ -13,6 +13,7 @@ also covers the U1 path. The full encoding spec lives in
 | `kuwait.3mf` | 2 | 4 | Per-face `paint_color` subdivision trees. Reproduces the "white-seam" boundary-triangle voting bug fixed in the parser. |
 | `turkey.3mf` | 2 | 2 | Anchor-part inheritance (`extruder="0"` parts in the Image-to-Keychain template). Reproduces the gray-block bug fixed in the parser. |
 | `hijri-calendar.3mf` | 4 | 4 | Multi-plate archive with shared filaments across plates. |
+| `vase-prusaslicer.gcode` | 1 | 1 | Sliced G-code (PrusaSlicer 2.7, arc fitting on) for the as-printed path: a 24 mm twisted vase. Not a 3MF; the round-trip test checks its size and welded GLB. |
 
 ## Use from the live demo
 

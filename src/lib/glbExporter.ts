@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-import { BUILD_UP_AXIS, reorientCloneToYUp } from './glbBuilder.js';
+import { BUILD_UP_AXIS, reorientCloneToYUp, weldSmoothMeshes } from './glbBuilder.js';
 import type { BuiltSceneUserData } from './glbBuilder.js';
 
 interface GLTFWriterLike {
@@ -62,6 +62,7 @@ export async function buildGLBBytes(scene: THREE.Object3D): Promise<Uint8Array> 
   // Gated on BUILD_UP_AXIS so flipping the constant disables the reorient
   // consistently with the pivot-flooring logic in computePivotOffset.
   if (BUILD_UP_AXIS === 'z') reorientCloneToYUp(exportScene);
+  weldSmoothMeshes(exportScene);
 
   if (hasDimensions && sceneUd.sourceUnit && sceneUd.upAxis && sceneUd.pivotMode && sceneUd.pivotOffsetM) {
     const mm = sceneUd.dimensions!.mm;

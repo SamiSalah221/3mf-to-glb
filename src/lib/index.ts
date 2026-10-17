@@ -5,6 +5,8 @@
 // stable.
 
 export { parse3MF } from './parse3MF.js';
+export { parseGcode, isGcodeFile } from './parseGcode.js';
+export type { ParseGcodeOptions, BeadOptions, GcodeDetail } from './parseGcode.js';
 export { buildSceneFromPlate } from './glbBuilder.js';
 export { buildGLBBytes } from './glbExporter.js';
 export { buildUSDZBytes } from './usdzExporter.js';
@@ -46,6 +48,7 @@ export type { GLBAssetExtras } from './glbExporter.js';
 
 import * as THREE from 'three';
 import { parse3MF } from './parse3MF.js';
+import { parseGcode, isGcodeFile, type ParseGcodeOptions } from './parseGcode.js';
 import { buildSceneFromPlate } from './glbBuilder.js';
 import { buildGLBBytes } from './glbExporter.js';
 import { buildOBJ } from './objExporter.js';
@@ -59,6 +62,18 @@ function eulerDegToQuat(x: number, y: number, z: number): RotationQuat {
   const e = new THREE.Euler(x * rad, y * rad, z * rad, 'XYZ');
   const q = new THREE.Quaternion().setFromEuler(e);
   return [q.x, q.y, q.z, q.w];
+}
+
+/**
+ * Parse any supported file: a design `.3mf`, or sliced G-code (`.gcode`, or a
+ * `.gcode.3mf` plate export) whose geometry is built from the toolpath (the
+ * as-printed model, every bead and layer line).
+ */
+export async function parsePrintFile(
+  buffer: ArrayBuffer | Uint8Array,
+  gcodeOptions: ParseGcodeOptions = {},
+): Promise<import('../types/index.js').ParseResult> {
+  return (await isGcodeFile(buffer)) ? parseGcode(buffer, gcodeOptions) : parse3MF(buffer);
 }
 
 export interface ConvertToGLBOptions {
@@ -82,6 +97,8 @@ export interface ConvertToGLBOptions {
    * CLI surfaces this as `--rotation "x,y,z"`.
    */
   rotationEulerDeg?: [number, number, number];
+  /** Options for G-code input (which features to keep, bead smoothness). Ignored for .3mf. */
+  gcode?: ParseGcodeOptions;
 }
 
 /** Parse, recolor, pick a plate, and build the export scene. Shared by the converters. */
@@ -89,7 +106,7 @@ async function buildSceneFromBuffer(
   buffer: ArrayBuffer | Uint8Array,
   opts: ConvertToGLBOptions,
 ): Promise<THREE.Group> {
-  let parsed = await parse3MF(buffer);
+  let parsed = await parsePrintFile(buffer, opts.gcode);
   if (opts.recolor) parsed = applyRecolor(parsed, opts.recolor);
 
   const plate = opts.plateId
