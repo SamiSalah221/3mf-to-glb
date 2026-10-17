@@ -366,9 +366,17 @@ try {
   const chunks = parsed.plates[0].meshChunks;
   const faces = chunks.reduce((n, c) => n + c.faceCount, 0);
   if (faces < 10000) throw new Error(`only ${faces} faces`);
-  if (!chunks.every((c) => c.smoothShaded && c.positions.length === c.faceCount * 9)) {
-    throw new Error('chunks must be smooth-shaded, non-indexed faceCount*9 positions');
+  if (!chunks.every((c) => c.smoothShaded && c.indices && c.indices.length === c.faceCount * 3)) {
+    throw new Error('chunks must be smooth-shaded, indexed, faceCount*3 indices');
   }
+  if (faces !== 149124) throw new Error(`vase swept to ${faces} faces, expected 149124 (full detail, no budget)`);
+  // A tight budget must step the fidelity down, and say so.
+  const reduced = await parseGcode(buf, { faceBudget: 50000 });
+  const rFaces = reduced.plates[0].meshChunks.reduce((n, c) => n + c.faceCount, 0);
+  if (!(rFaces < faces) || !reduced.printInfo?.reducedDetail) {
+    throw new Error(`faceBudget did not reduce (${rFaces} faces, note=${reduced.printInfo?.reducedDetail})`);
+  }
+  if (!parsed.gcodeSource?.[0]?.segments?.count) throw new Error('gcodeSource segments missing');
   const glb = await convertToGLB(buf);
   const { extras, json } = readGLBJson(glb);
   const prims = json.meshes.flatMap((m) => m.primitives);

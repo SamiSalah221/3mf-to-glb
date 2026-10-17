@@ -11,9 +11,14 @@ import JSZip from 'jszip';
 import type { FilamentSlot, ParseResult, Plate } from '../types/index.js';
 import { UNIT_TO_METERS } from '../types/index.js';
 import { readGcode } from './gcode/readGcode.js';
-import { buildBeadChunks, type BeadOptions } from './gcode/beads.js';
+import { buildBeadChunks, type BeadOptions, type FidelityTier } from './gcode/beads.js';
 
 export type { BeadOptions, GcodeDetail } from './gcode/beads.js';
+
+/** Short label for a reduced fidelity tier, for the UI. */
+export function describeTier(t: FidelityTier): string {
+  return `reduced detail (${t.simplifyMm} mm, ${2 * (t.smooth + 1)}-sided beads${t.innerWalls === 'none' ? ', outer walls only' : ''})`;
+}
 
 const DEFAULT_COLOURS = ['#D9D9D9', '#E84A4A', '#3A7BD5', '#F2C14E', '#4CAF50', '#9C27B0', '#FF9800', '#00BCD4'];
 
@@ -69,7 +74,9 @@ export async function parseGcode(
     throw new Error('Binary G-code (.bgcode) is not supported. Turn off binary G-code in the slicer and export again.');
   }
 
-  const sources: { id: number; name: string; text: string; thumb: JSZip.JSZipObject | null }[] = [];
+  // Each plate's text is decoded only when its turn comes and released after
+  // readGcode, so a multi-plate archive never holds every plate's text at once.
+  const sources: { id: number; name: string; text: () => Promise<string>; thumb: JSZip.JSZipObject | null }[] = [];
   if (isZip(bytes)) {
     const zip = await JSZip.loadAsync(bytes);
     const names = Object.keys(zip.files).filter((n) => /\.gcode$/i.test(n)).sort();
@@ -77,32 +84,34 @@ export async function parseGcode(
     for (const name of names) {
       const m = /plate_(\d+)\.gcode$/i.exec(name);
       const id = m ? parseInt(m[1], 10) : sources.length + 1;
-      opts.onProgress?.(`Reading plate ${id}`);
       sources.push({
         id,
         name: `Plate ${id}`,
-        text: await zip.file(name)!.async('string'),
+        text: () => zip.file(name)!.async('string'),
         thumb: zip.file(name.replace(/\.gcode$/i, '.png')),
       });
     }
   } else {
-    sources.push({ id: 1, name: 'Plate 1', text: new TextDecoder().decode(bytes), thumb: null });
+    sources.push({ id: 1, name: 'Plate 1', text: async () => new TextDecoder().decode(bytes), thumb: null });
   }
 
   const plates: Plate[] = [];
   let colours: string[] = [];
   let printInfo: ParseResult['printInfo'];
   let maxTool = 0;
+  const gcodeSource: NonNullable<ParseResult['gcodeSource']> = [];
   for (const src of sources) {
     opts.onProgress?.(`Reading toolpath of ${src.name.toLowerCase()}`);
-    const read = readGcode(src.text);
-    if (!read.segments.length) continue;
+    const read = readGcode(await src.text());
+    if (!read.segments.count) continue;
     if (!colours.length) colours = read.colours;
     if (!printInfo) printInfo = read.info;
     opts.onProgress?.(`Building beads for ${src.name.toLowerCase()}`);
-    const { chunks } = buildBeadChunks(read.segments, read.filamentDiameter, opts, `plate${src.id}`);
+    const { chunks, stats } = buildBeadChunks(read.segments, read.filamentDiameter, opts, `plate${src.id}`);
     if (!chunks.length) continue;
     for (const c of chunks) maxTool = Math.max(maxTool, c.filamentIndex - 1);
+    gcodeSource.push({ plateId: src.id, segments: read.segments, filamentDiameter: read.filamentDiameter });
+    if (stats.tier.reduced && printInfo && !printInfo.reducedDetail) printInfo.reducedDetail = describeTier(stats.tier);
 
     let thumbnailUrl: string | null = null;
     if (src.thumb && typeof Blob !== 'undefined' && typeof URL?.createObjectURL === 'function') {
@@ -133,5 +142,6 @@ export async function parseGcode(
     unitToMeters: UNIT_TO_METERS.millimeter,
     sourceKind: 'gcode',
     printInfo,
+    gcodeSource,
   };
 }

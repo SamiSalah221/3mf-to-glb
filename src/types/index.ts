@@ -33,6 +33,11 @@ export interface MeshChunk {
    * several times smaller; flat-shaded 3MF chunks are left as they are.
    */
   smoothShaded?: boolean;
+  /**
+   * Triangle indices into positions/normals (three corners per face). Set for
+   * the indexed beads built from G-code; absent for the non-indexed 3MF soup.
+   */
+  indices?: Uint32Array;
 }
 
 /** A plate containing multiple mesh chunks */
@@ -86,7 +91,18 @@ export interface ParseResult {
     layerHeightMm?: number;
     layers?: number;
     estimatedTime?: string;
+    /**
+     * Set when a face budget reduced the on-screen bead detail, e.g.
+     * "reduced detail (0.05 mm, 4-sided beads)". Export re-sweeps at full
+     * detail from `gcodeSource`.
+     */
+    reducedDetail?: string;
   };
+  /**
+   * G-code sources only: the extrusion segments each plate was swept from,
+   * kept so export can re-sweep at full detail when the viewer was reduced.
+   */
+  gcodeSource?: { plateId: number; segments: import('../lib/gcode/readGcode.js').Segments; filamentDiameter: number }[];
 }
 
 /**

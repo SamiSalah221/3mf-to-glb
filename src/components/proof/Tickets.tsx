@@ -124,6 +124,7 @@ export function ProofTicket({ onStep }: { onStep: (s: Step) => void }) {
       ? `${printInfo.layers}${printInfo.layerHeightMm ? ` × ${printInfo.layerHeightMm} mm` : ''}`
       : undefined],
     ['Time', printInfo?.estimatedTime],
+    ['On screen', printInfo?.reducedDetail ? `${printInfo.reducedDetail}; exports keep full detail` : undefined],
   ];
 
   return (
@@ -197,7 +198,7 @@ export function SignOffTicket({ onOrient }: { onOrient: () => void }) {
   const { both, viewMode } = useVersionInfo();
   const setViewMode = useAppStore((s) => s.setViewMode);
   const rotationQuat = useAppStore((s) => s.rotationQuat);
-  const { handleExportGLB, handleExportOBJ, handleExport3MF, handleViewInAR, arLabel, exporting, busy, can3MF } =
+  const { handleExportGLB, handleExportOBJ, handleExport3MF, handleViewInAR, arLabel, exporting, exportNote, busy, can3MF } =
     useExportActions();
 
   const card = 'bg-panel border border-line p-4 flex flex-col gap-2.5';
@@ -239,6 +240,12 @@ export function SignOffTicket({ onOrient }: { onOrient: () => void }) {
           {exporting === 'glb' && spinner}Export GLB
         </button>
       </div>
+
+      {exportNote && (
+        <span role="status" className="text-[13px] text-tx2 leading-relaxed -mt-2">
+          {exportNote}
+        </span>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className={card}>

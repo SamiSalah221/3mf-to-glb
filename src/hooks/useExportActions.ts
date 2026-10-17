@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { exportGLB, triggerBrowserDownload, buildGLBBytes, getExportScene } from '../lib/glbExporter';
+import { triggerBrowserDownload, buildGLBBytes } from '../lib/glbExporter';
+import { acquireExportScene } from './exportScene';
 import { buildUSDZBytes } from '../lib/usdzExporter';
 import { buildOBJBytes } from '../lib/objExporter';
 import { exportRecolored3MF } from '../lib/build3MF';
@@ -10,6 +11,8 @@ type ExportingState = null | 'glb' | 'obj' | '3mf' | 'ar';
 
 export function useExportActions() {
   const [exporting, setExporting] = useState<ExportingState>(null);
+  // What the last export carried (full or reduced detail), or the step in progress.
+  const [exportNote, setExportNote] = useState<string | null>(null);
   const [arPlatform, setArPlatform] = useState<ArPlatform>('desktop');
   const file = useAppStore((s) => s.file);
   const filaments = useAppStore((s) => s.filaments);
@@ -25,8 +28,16 @@ export function useExportActions() {
 
   const handleExportGLB = async () => {
     setExporting('glb');
+    setExportNote(null);
     try {
-      await exportGLB(`${baseName}.glb`);
+      const handle = await acquireExportScene(setExportNote);
+      try {
+        const bytes = await buildGLBBytes(handle.scene);
+        triggerBrowserDownload(bytes, `${baseName}.glb`, 'model/gltf-binary');
+        setExportNote(handle.note);
+      } finally {
+        handle.dispose();
+      }
     } catch (err) {
       console.error('GLB export failed:', err);
       window.alert('GLB export failed. See console for details.');
@@ -36,14 +47,19 @@ export function useExportActions() {
   };
 
   const handleExportOBJ = async () => {
-    const scene = getExportScene();
-    if (!scene) return;
     setExporting('obj');
+    setExportNote(null);
     try {
-      // One self-contained .obj: colors ride on the vertices (v x y z r g b),
-      // so there is no .mtl to keep alongside it.
-      const bytes = buildOBJBytes(scene);
-      triggerBrowserDownload(bytes, `${baseName}.obj`, 'model/obj');
+      const handle = await acquireExportScene(setExportNote);
+      try {
+        // One self-contained .obj: colors ride on the vertices (v x y z r g b),
+        // so there is no .mtl to keep alongside it.
+        const bytes = buildOBJBytes(handle.scene);
+        triggerBrowserDownload(bytes, `${baseName}.obj`, 'model/obj');
+        setExportNote(handle.note);
+      } finally {
+        handle.dispose();
+      }
     } catch (err) {
       console.error('OBJ export failed:', err);
       window.alert('OBJ export failed. See console for details.');
@@ -69,23 +85,29 @@ export function useExportActions() {
   };
 
   const handleViewInAR = async () => {
-    const scene = getExportScene();
-    if (!scene) return;
     setExporting('ar');
+    setExportNote(null);
     try {
-      if (arPlatform === 'ios') {
-        const bytes = await buildUSDZBytes(scene);
-        launchQuickLook(bytes, `${baseName}.usdz`);
-      } else if (arPlatform === 'android') {
-        const bytes = await buildGLBBytes(scene);
-        await launchWebXR(bytes, `${baseName}.glb`);
-      } else {
-        const bytes = await buildGLBBytes(scene);
-        triggerBrowserDownload(bytes, `${baseName}.glb`, 'model/gltf-binary');
-        window.alert(
-          'AR Quick Look (iOS) and WebXR (Android) only work on mobile. ' +
-            'A GLB has been downloaded. Drop it into a viewer like model-viewer or Blender.',
-        );
+      const handle = await acquireExportScene(setExportNote);
+      try {
+        const scene = handle.scene;
+        if (arPlatform === 'ios') {
+          const bytes = await buildUSDZBytes(scene);
+          launchQuickLook(bytes, `${baseName}.usdz`);
+        } else if (arPlatform === 'android') {
+          const bytes = await buildGLBBytes(scene);
+          await launchWebXR(bytes, `${baseName}.glb`);
+        } else {
+          const bytes = await buildGLBBytes(scene);
+          triggerBrowserDownload(bytes, `${baseName}.glb`, 'model/gltf-binary');
+          window.alert(
+            'AR Quick Look (iOS) and WebXR (Android) only work on mobile. ' +
+              'A GLB has been downloaded. Drop it into a viewer like model-viewer or Blender.',
+          );
+        }
+        setExportNote(handle.note);
+      } finally {
+        handle.dispose();
       }
     } catch (err) {
       console.error('AR launch failed:', err);
@@ -109,6 +131,8 @@ export function useExportActions() {
     handleViewInAR,
     arLabel,
     exporting,
+    /** Detail note for the last export, or the export step in progress. */
+    exportNote,
     busy: exporting !== null,
     file,
     /** 3MF write-back re-tints the source 3MF; a G-code source has none. */

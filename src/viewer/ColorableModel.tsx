@@ -164,12 +164,31 @@ export function ColorableModel() {
   const handleClick = useCallback(
     (e: ThreeEvent<MouseEvent>) => {
       e.stopPropagation();
-      const filIdx = (e.object as THREE.Mesh).userData.filamentIndex as number | undefined;
+      let mesh = e.object as THREE.Mesh;
+      // Bead meshes (G-code) raycast against their bounding box for cheap
+      // hover, and on a multi-tool print those boxes overlap, so the hit is
+      // the first box the ray enters, not the bead under the cursor. One
+      // exact triangle pass per click settles it; per pointer move it would
+      // stall, per click it is a few hundred ms at most.
+      if (mesh.userData.weldOnExport && sceneGroup) {
+        const hits: THREE.Intersection[] = [];
+        const raycaster = new THREE.Raycaster();
+        raycaster.ray.copy(e.ray);
+        sceneGroup.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.userData.weldOnExport) {
+            THREE.Mesh.prototype.raycast.call(child, raycaster, hits);
+          }
+        });
+        if (!hits.length) return;
+        hits.sort((a, b) => a.distance - b.distance);
+        mesh = hits[0].object as THREE.Mesh;
+      }
+      const filIdx = mesh.userData.filamentIndex as number | undefined;
       if (filIdx) {
         selectFilament(selectedFilamentIndex === filIdx ? null : filIdx);
       }
     },
-    [selectFilament, selectedFilamentIndex],
+    [selectFilament, selectedFilamentIndex, sceneGroup],
   );
 
   const handlePointerOver = useCallback(
