@@ -38,7 +38,8 @@ MIT-licensed, no telemetry.**
 
 No sign-up, no upload. If you don't have a `.3mf` handy, hit
 **"Owl · Bambu"** or **"Sea slug · Snapmaker U1"** on the
-open screen, or grab one of the fixtures in [`samples/`](./samples) and
+open screen (the sea slug also loads its sliced G-code, so you can switch
+between the design and the part as printed), or grab one of the fixtures in [`samples/`](./samples) and
 drop it on the page.
 
 > **Snapmaker U1 Innovation Fund submission:** project description and

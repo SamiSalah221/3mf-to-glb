@@ -9,14 +9,32 @@ import { PRIMARY, SECONDARY } from './proof/constants';
 const SAMPLES_BASE_URL =
   'https://raw.githubusercontent.com/SamiSalah221/3mf-to-glb/master/samples/';
 
-const SAMPLES = [
+interface SampleFile {
+  filename: string;
+  downloadName: string;
+}
+
+/** A sample design; `gcode` is its sliced print, opened with it so both versions load. */
+interface Sample extends SampleFile {
+  label: string;
+  gcode?: SampleFile;
+}
+
+const SAMPLES: Sample[] = [
   { label: 'Owl · Bambu', filename: 'watchful-owl.3mf', downloadName: 'owl-sample.3mf' },
   {
     label: 'Sea slug · Snapmaker U1',
     filename: '海蛞蝓【项目】U1  sea.3mf',
     downloadName: 'u1-sample.3mf',
+    gcode: { filename: '组合体_PLA_10h17m.gcode', downloadName: 'u1-sample.gcode' },
   },
 ];
+
+async function fetchSample({ filename, downloadName }: SampleFile): Promise<File> {
+  const res = await fetch(SAMPLES_BASE_URL + encodeURIComponent(filename));
+  if (!res.ok) throw new Error(`Sample download failed (${res.status})`);
+  return new File([await res.arrayBuffer()], downloadName);
+}
 
 const TICKET = [
   { n: 1, title: 'Open', body: 'A design, a sliced print, or both of the same part.' },
@@ -31,14 +49,12 @@ export function UploadScreen() {
   const [loadingSample, setLoadingSample] = useState<string | null>(null);
 
   const onTrySample = useCallback(
-    async (sample: (typeof SAMPLES)[number]) => {
+    async (sample: Sample) => {
       setLoadingSample(sample.filename);
       try {
         setLoading(true);
-        const res = await fetch(SAMPLES_BASE_URL + encodeURIComponent(sample.filename));
-        if (!res.ok) throw new Error(`Sample download failed (${res.status})`);
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        await openFiles([new File([bytes], sample.downloadName, { type: 'model/3mf' })]);
+        const files = await Promise.all([sample, sample.gcode].filter((f) => f !== undefined).map(fetchSample));
+        await openFiles(files);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load sample file');
       } finally {
@@ -113,6 +129,7 @@ export function UploadScreen() {
                   <span className="w-3.5 h-3.5 border-2 border-line3 border-t-accent rounded-full animate-spin" aria-hidden="true" />
                 )}
                 {sample.label}
+                {sample.gcode && <span className="font-mono text-[12px] text-tx2">+ G-code</span>}
               </button>
             ))}
           </div>
