@@ -1,7 +1,12 @@
 # demo — hero animation source
 
-This folder holds the [Remotion](https://www.remotion.dev) project that renders
-the hero animation shown at the top of the main [README](../README.md).
+This folder holds the [Remotion](https://www.remotion.dev) project that rendered
+the original hero animation for the main [README](../README.md).
+
+> The hero currently in `docs/hero.gif` (960×540, 18s, 12 fps, ~3.6 MB) was
+> made with the [/brag](https://github.com/latent-spaces/brag) skill from
+> captures of the real app running `samples/watchful-owl.3mf`. Running
+> `npm run render` here overwrites it with the older Remotion animation.
 
 ## Render the GIF
 
